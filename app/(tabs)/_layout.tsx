@@ -16,10 +16,11 @@ export default function TabLayout() {
           headerShown: false,
         }}
       />
+      
       <Tabs.Screen
-        name="addImage"
+        name="progress"
         options={{
-          title: '',
+          title: 'תהליך',
           headerShown: false,
         }}
       />
@@ -27,6 +28,13 @@ export default function TabLayout() {
         name="dailySummary"
         options={{
           title: 'סיכום',
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen
+        name="addImage"
+        options={{
+          title: '',
           headerShown: false,
         }}
       />

@@ -20,8 +20,9 @@ import { Ionicons } from "@expo/vector-icons"
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSpring } from "react-native-reanimated"
 import PlateChart from "../meal/PlateChart"
 import CustomMealBuilder, { type CustomMeal } from "../meal/customMealBuilder"
-import type { MealData, Ingredient } from "../../types/mealTypes"
-import { API_URL } from '@/config';
+import type { MealData, Ingredient } from "@/types/mealTypes"
+import { saveMealToFirestore } from "@/services/mealService"
+import { API_URL } from "@/config"
 
 type NutritionData = {
   product_name?: string
@@ -58,7 +59,7 @@ export default function UploadPickerModal({
   onClose,
   onImageSelected,
   barcodeAttachment,
-  apiUrl = `${API_URL}`,
+  apiUrl = `${API_URL}`, // Default to localhost for development
   onSaveMeal,
 }: Props) {
   const router = useRouter()
@@ -374,8 +375,14 @@ export default function UploadPickerModal({
     if (!mealData) return
 
     try {
+      console.log("Saving meal data:", JSON.stringify(mealData))
+
       if (onSaveMeal) {
+        console.log("Using provided onSaveMeal function")
         await onSaveMeal(mealData)
+      } else {
+        console.log("No onSaveMeal provided, saving directly to Firestore")
+        await saveMealToFirestore(mealData)
       }
 
       Alert.alert("נשמר בהצלחה", "הארוחה נוספה ליומן שלך")
@@ -445,11 +452,10 @@ export default function UploadPickerModal({
       console.log("handleCustomMealSave called with meal:", JSON.stringify(meal))
 
       // Convert the custom meal to MealData format
-      // Map the ingredients to ensure they match the expected format
       const mappedIngredients = meal.ingredients.map((ing) => ({
         id: ing.id,
         name: ing.name,
-        amount: ing.quantity, // Map quantity to amount
+        amount: ing.quantity,
         unit: ing.unit,
         calories: ing.calories,
         protein_g: ing.protein_g,
@@ -468,19 +474,18 @@ export default function UploadPickerModal({
 
       console.log("Converted to MealData format:", JSON.stringify(mealData))
 
-      // Save the meal using the existing onSaveMeal function
+      // Save the meal using the provided onSaveMeal function or directly to Firestore
       if (onSaveMeal) {
-        console.log("onSaveMeal prop exists in UploadPickerModal, calling it now")
+        console.log("Using provided onSaveMeal function")
         await onSaveMeal(mealData)
-        console.log("onSaveMeal in UploadPickerModal completed successfully")
-
-        // Close the modal
-        setShowCustomMealBuilder(false)
-        onClose()
       } else {
-        console.error("onSaveMeal prop is not defined in UploadPickerModal")
-        Alert.alert("שגיאה", "לא ניתן לשמור את המנה - חסר מידע שמירה")
+        console.log("No onSaveMeal provided, saving directly to Firestore")
+        await saveMealToFirestore(mealData)
       }
+
+      Alert.alert("נשמר בהצלחה", "הארוחה נוספה ליומן שלך")
+      setShowCustomMealBuilder(false)
+      onClose()
     } catch (error) {
       console.error("Error saving custom meal:", error)
       Alert.alert("שגיאה", `אירעה שגיאה בשמירת המנה: ${error instanceof Error ? error.message : "Unknown error"}`)
@@ -711,10 +716,6 @@ export default function UploadPickerModal({
 
             <TouchableOpacity onPress={() => handleBarcodeScan("gallery")} style={styles.action}>
               <Text style={styles.actionText}>🏷️ סרוק ברקוד מתמונה בגלריה</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={handleUploadBarcodeImage} style={styles.action}>
-              <Text style={styles.actionText}>📤 העלה תמונת ברקוד לשרת</Text>
             </TouchableOpacity>
 
             <TouchableOpacity onPress={handleCustomMealBuilder} style={styles.action}>

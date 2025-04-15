@@ -4,18 +4,7 @@ import { useState, useEffect } from "react"
 import { View, Text, StyleSheet, Button, Alert, TouchableOpacity } from "react-native"
 import { auth } from "../../firebase"
 import { useRouter } from "expo-router"
-import {
-  doc,
-  getDoc,
-  getFirestore,
-  collection,
-  addDoc,
-  Timestamp,
-  getDocs,
-  query,
-  where,
-  setDoc,
-} from "firebase/firestore"
+import { doc, getDoc, getFirestore, collection, Timestamp, query, where, onSnapshot } from "firebase/firestore"
 import { LinearGradient } from "expo-linear-gradient"
 import { Ionicons } from "@expo/vector-icons"
 import * as Animatable from "react-native-animatable"
@@ -30,7 +19,7 @@ import KeyboardAvoidingContainer from "@/components/ui/KeyboardAvoidingContainer
 import { useFonts } from "expo-font"
 import EditableNutritionResult from "../../components/meal/EditableNutritionResult"
 import { useOnboarding } from "../../context/OnboardingContext"
-import { API_URL } from '@/config';
+import { saveMealToFirestore } from "@/services/mealService"
 
 const db = getFirestore()
 
@@ -267,7 +256,7 @@ export default function LoggedInHome() {
     return "ברוך/ה הבא/ה! צלם/י או העלה/י תמונה של הארוחה שלך כדי לראות את הערכים התזונתיים שלה."
   }
 
-  const fetchTodayMeals = async () => {
+  const fetchTodayMeals = () => {
     const user = auth.currentUser
     if (!user) {
       // For non-registered users, just set zeros
@@ -276,7 +265,7 @@ export default function LoggedInHome() {
       setConsumedCarbs(0)
       setConsumedFats(0)
       setTodayMeals([])
-      return
+      return () => {} // Return empty cleanup function
     }
 
     try {
@@ -291,67 +280,74 @@ export default function LoggedInHome() {
         where("timestamp", ">=", Timestamp.fromDate(todayStart)),
         where("timestamp", "<=", Timestamp.fromDate(todayEnd)),
       )
-      const snapshot = await getDocs(q)
 
-      let totalCalories = 0
-      let totalProtein = 0
-      let totalCarbs = 0
-      let totalFats = 0
+      // Set up real-time listener
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          let totalCalories = 0
+          let totalProtein = 0
+          let totalCarbs = 0
+          let totalFats = 0
 
-      const meals: any[] = []
+          const meals: any[] = []
 
-      snapshot.forEach((doc) => {
-        const data = doc.data()
-        totalCalories += data.calories
-        totalProtein += data.protein_g ?? 0
-        totalCarbs += data.carbs_g ?? 0
-        totalFats += data.fat_g ?? 0
-        meals.push(data)
-      })
+          snapshot.forEach((doc) => {
+            const data = doc.data()
+            totalCalories += data.calories || 0
+            totalProtein += data.protein_g || 0
+            totalCarbs += data.carbs_g || 0
+            totalFats += data.fat_g || 0
+            meals.push({
+              ...data,
+              id: doc.id,
+            })
+          })
 
-      setConsumedCalories(totalCalories)
-      setConsumedProtein(totalProtein)
-      setConsumedCarbs(totalCarbs)
-      setConsumedFats(totalFats)
-      setTodayMeals(meals)
+          setConsumedCalories(totalCalories)
+          setConsumedProtein(totalProtein)
+          setConsumedCarbs(totalCarbs)
+          setConsumedFats(totalFats)
+          setTodayMeals(meals)
+        },
+        (error) => {
+          console.error("Error fetching meals:", error)
+        },
+      )
+
+      return unsubscribe
     } catch (err) {
-      console.error("Failed to fetch meals:", err)
+      console.error("Failed to set up meals listener:", err)
+      return () => {} // Return empty cleanup function
     }
   }
 
   useEffect(() => {
     fetchUserData()
-    fetchTodayMeals()
+    const unsubscribe = fetchTodayMeals()
+
+    // Clean up the listener when component unmounts
+    return () => {
+      if (unsubscribe) {
+        unsubscribe()
+      }
+    }
   }, [])
 
   const saveMealToDatabase = async (mealData: any) => {
-    const user = auth.currentUser
-    if (!user) return
     try {
-      const meal = {
-        ...mealData,
-        timestamp: Timestamp.now(),
-      }
-
-      if (currentMealDocId) {
-        const mealRef = doc(db, "users", user.uid, "meals", currentMealDocId)
-        await setDoc(mealRef, meal, { merge: true })
-        console.log("✅ Meal updated:", currentMealDocId)
-      } else {
-        const docRef = await addDoc(collection(db, "users", user.uid, "meals"), meal)
-        setCurrentMealDocId(docRef.id)
-        console.log("🆕 New meal saved:", docRef.id)
-      }
-
-      fetchTodayMeals()
+      console.log("Saving meal to database:", JSON.stringify(mealData))
+      await saveMealToFirestore(mealData)
+      //fetchTodayMeals() // Refresh the meals list
     } catch (error) {
-      console.error("Failed to save/update meal:", error)
+      console.error("Failed to save meal:", error)
+      Alert.alert("שגיאה", "אירעה שגיאה בשמירת הארוחה")
     }
   }
 
   const recalculateWithEditedIngredients = async (updatedIngredients: any) => {
     try {
-      const response = await fetch(`${API_URL}/recalculate`, {
+      const response = await fetch("192.168.1.102:5000/recalculate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -390,7 +386,7 @@ export default function LoggedInHome() {
     setCurrentMealDocId(null)
     setClearTrigger((prev) => prev + 1)
     await fetchUserData()
-    await fetchTodayMeals()
+    // No need to call fetchTodayMeals() here as it's already listening for changes
     setRefreshing(false)
   }
 

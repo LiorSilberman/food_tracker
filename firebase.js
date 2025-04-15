@@ -21,7 +21,6 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-console.log("Firebase config:", firebaseConfig);
 
 const auth =
   Platform.OS === 'web'

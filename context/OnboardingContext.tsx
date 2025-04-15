@@ -13,13 +13,6 @@ type OnboardingData = {
   weight?: number
   activityLevel?: string
 
-  // New fields from enhanced onboarding
-  dietaryPreference?: string
-  allergies?: string[]
-  mealsPerDay?: number
-  snacksPerDay?: number
-  cameraPermission?: boolean
-
   // Additional fields from the updated onboarding flow
   activityType?: string // aerobic, anaerobic, mixed
   experienceLevel?: string // beginner, advanced (for muscle building)

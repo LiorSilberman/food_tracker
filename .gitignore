@@ -31,8 +31,24 @@ yarn-error.*
 
 # local env files
 .env*.local
+.env*
 
 # typescript
 *.tsbuildinfo
 
 app-example
+
+# VSCode project settings (optional, if you don't want to sync personal settings)
+.vscode/
+
+# Temporary Expo files
+.expo-shared/
+
+# Build artifacts
+build/
+
+# Firebase emulators (if you ever use them)
+firebase-debug.log
+
+# Optional lockfiles (if not using Yarn)
+yarn.lock

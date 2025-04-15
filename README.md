@@ -1,50 +1,48 @@
-# Welcome to your Expo app 👋
+# 🥗 Food Tracker App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A smart and interactive nutrition tracking app built with **React Native** and **Expo**, backed by **Firebase** and powered by **AI**.
 
-## Get started
+This app allows users to:
+- Take or upload photos of their meals
+- Get AI-based nutrition analysis (calories, protein, fats, carbs)
+- Edit and refine results for more accurate tracking
+- Track daily progress and goals
+- Go through a personalized onboarding to set weight/fitness goals
+- Sync data with Firebase Auth & Firestore
 
-1. Install dependencies
+## 📸 Key Features
 
-   ```bash
-   npm install
-   ```
+- 📷 **Image Recognition**: Upload a meal photo, get instant breakdown of ingredients & nutrition via Gemini Vision API.
+- 🧠 **AI-Powered Estimates**: Automatically extract calories and macros.
+- 📝 **Editable Results**: Users can tweak portion sizes for accurate tracking.
+- 📈 **Daily Summary**: Progress bar, status card, and calorie visualization.
+- 🎯 **Personal Goals**: Set goals like fat loss or muscle gain and get smart recommendations.
+- 🔐 **Authentication**: Firebase Auth with secure onboarding.
+- ☁️ **Cloud Sync**: Firestore integration to store and retrieve user data.
 
-2. Start the app
+## 🛠 Built With
 
-   ```bash
-    npx expo start
-   ```
+- **React Native + Expo**
+- **Firebase Auth & Firestore**
+- **Gemini AI Vision API (Google)**
+- **Zustand** for state management
+- **React Native Reanimated** for animations
+- **Typescript** for type safety
 
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## 📦 Project Structure
 
 ```bash
-npm run reset-project
+.
+├── app/                      # Expo Router structure
+├── components/              # Reusable UI components
+├── assets/                  # Fonts and images
+├── config.ts                # Central config (API URL)
+├── firebase.js              # Firebase setup
+├── stores/                  # Zustand stores
+├── utils/                   # Utility functions
+├── types/                   # Shared TypeScript types
+├── .env                     # Environment variables (not committed)
+├── app.config.ts            # Expo + environment config
+├── babel.config.js
+├── package.json
 ```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.

@@ -1,5 +1,6 @@
 // Create a types file for meal-related types
 
+
 export type Ingredient = {
     id: string
     name: string
@@ -23,4 +24,3 @@ export type Ingredient = {
     portion_size?: number
     portion_unit?: string
   }
-  

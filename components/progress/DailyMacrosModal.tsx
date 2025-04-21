@@ -2,7 +2,7 @@
 import React from "react"
 import { View, Text, StyleSheet, TouchableOpacity, Modal } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
-import { formatDate } from "../../utils/dateHelpers" // you can extract helper functions as needed
+import { formatDate } from "@/utils/dateHelpers"
 
 interface DailyMacrosModalProps {
   visible: boolean

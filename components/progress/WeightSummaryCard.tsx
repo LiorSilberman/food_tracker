@@ -78,7 +78,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   content: {
-    flexDirection: "row",
+    flexDirection: "row-reverse",
     justifyContent: "space-between",
     alignItems: "flex-start",
   },
@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
     color: "#64748b",
   },
   changeContainer: {
-    flexDirection: "row",
+    flexDirection: "row-reverse",
     alignItems: "center",
     marginTop: 4,
   },

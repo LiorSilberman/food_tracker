@@ -1,9 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect } from "react"
 import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Platform } from "react-native"
 import { AntDesign, FontAwesome6, Ionicons } from "@expo/vector-icons"
-import UploadPickerModal from "../components/ui/UploadPickerModal"
 import { useRouter } from "expo-router"
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs"
 import { useImageUploadStore } from "../stores/imageUploadStore"
@@ -14,7 +13,6 @@ const { width } = Dimensions.get("window")
 const primaryColor = "#0891b2"
 const primaryColorLight = "#0ab3db"
 const greyColor = "#737373"
-const darkGreyColor = "#404040"
 
 const icons = {
   home: (props: any) => <AntDesign name="home" size={24} {...props} />,
@@ -25,11 +23,10 @@ const icons = {
 
 type TabRouteName = keyof typeof icons
 
-const TabBar = ({ state, descriptors, navigation }: BottomTabBarProps) => {
-  const [showUploadModal, setShowUploadModal] = useState(false)
-  const setImageData = useImageUploadStore((state) => state.setImageData)
-  const resetUpload = useImageUploadStore((state) => state.reset)
-  const router = useRouter()
+export default function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+  const setShowUploadModal = (show: boolean) =>
+    useImageUploadStore.setState({ showUploadModal: show })
+  const showUploadModal = useImageUploadStore((s) => s.showUploadModal)
 
   // Animation values
   const tabPositions = [useSharedValue(0), useSharedValue(0), useSharedValue(0), useSharedValue(0)]
@@ -42,32 +39,22 @@ const TabBar = ({ state, descriptors, navigation }: BottomTabBarProps) => {
     tabPositions[index].value = x
   }
 
-  const handleImageSelected = (uri: string, base64: string) => {
-    resetUpload()
-
-    setTimeout(() => {
-      setImageData(uri, base64)
-      setShowUploadModal(false)
-    }, 0)
-  }
-
-  // Handle add button press with animation - fixed version
+  // Handle add button press with animation
   const handleAddPress = () => {
-    // Start animations
     addButtonScale.value = withSpring(0.9, { damping: 10 })
     addButtonRotation.value = withTiming(45, { duration: 300 })
 
-    // Show modal immediately - don't wait for animations
+    // Show modal via global store
     setShowUploadModal(true)
 
-    // Reset animations after modal is shown
+    // Reset animation
     setTimeout(() => {
       addButtonScale.value = withSpring(1)
       addButtonRotation.value = withTiming(0, { duration: 300 })
     }, 300)
   }
 
-  // Reset button animation when modal is closed
+  // When modal closes, reset button animation
   useEffect(() => {
     if (!showUploadModal) {
       addButtonScale.value = withSpring(1)
@@ -75,59 +62,48 @@ const TabBar = ({ state, descriptors, navigation }: BottomTabBarProps) => {
     }
   }, [showUploadModal])
 
-  // Animated styles for add button
-  const addButtonAnimatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ scale: addButtonScale.value }, { rotate: `${addButtonRotation.value}deg` }],
-    }
-  })
+  const addButtonAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { scale: addButtonScale.value },
+      { rotate: `${addButtonRotation.value}deg` },
+    ],
+  }))
 
   return (
-    <>
-      {/* Main Tab Bar */}
-      <View style={styles.tabbarContainer}>
-        {Platform.OS === "ios" ? (
-          <BlurView intensity={80} tint="light" style={styles.tabbar}>
-            <TabBarContent
-              state={state}
-              descriptors={descriptors}
-              navigation={navigation}
-              setTabPosition={setTabPosition}
-              tabScales={tabScales}
-              addButtonAnimatedStyle={addButtonAnimatedStyle}
-              handleAddPress={handleAddPress}
-              primaryColor={primaryColor}
-              greyColor={greyColor}
-            />
-          </BlurView>
-        ) : (
-          <View style={styles.tabbar}>
-            <TabBarContent
-              state={state}
-              descriptors={descriptors}
-              navigation={navigation}
-              setTabPosition={setTabPosition}
-              tabScales={tabScales}
-              addButtonAnimatedStyle={addButtonAnimatedStyle}
-              handleAddPress={handleAddPress}
-              primaryColor={primaryColor}
-              greyColor={greyColor}
-            />
-          </View>
-        )}
-      </View>
-
-      {/* Upload Modal */}
-      <UploadPickerModal
-        isVisible={showUploadModal}
-        onClose={() => setShowUploadModal(false)}
-        onImageSelected={handleImageSelected}
-      />
-    </>
+    <View style={styles.tabbarContainer}>
+      {Platform.OS === "ios" ? (
+        <BlurView intensity={80} tint="light" style={styles.tabbar}>
+          <TabBarContent
+            state={state}
+            descriptors={descriptors}
+            navigation={navigation}
+            setTabPosition={setTabPosition}
+            tabScales={tabScales}
+            addButtonAnimatedStyle={addButtonAnimatedStyle}
+            handleAddPress={handleAddPress}
+            primaryColor={primaryColor}
+            greyColor={greyColor}
+          />
+        </BlurView>
+      ) : (
+        <View style={styles.tabbar}>
+          <TabBarContent
+            state={state}
+            descriptors={descriptors}
+            navigation={navigation}
+            setTabPosition={setTabPosition}
+            tabScales={tabScales}
+            addButtonAnimatedStyle={addButtonAnimatedStyle}
+            handleAddPress={handleAddPress}
+            primaryColor={primaryColor}
+            greyColor={greyColor}
+          />
+        </View>
+      )}
+    </View>
   )
 }
 
-// Separate component for tab bar content to work with BlurView
 const TabBarContent = ({
   state,
   descriptors,
@@ -148,98 +124,72 @@ const TabBarContent = ({
   handleAddPress: () => void
   primaryColor: string
   greyColor: string
-}) => {
-  return (
-    <>
-      {state.routes.map((route: any, index: number) => {
-        const routeName = route.name as TabRouteName
-        const { options } = descriptors[route.key]
-        const label =
-          options.tabBarLabel !== undefined
-            ? options.tabBarLabel
-            : options.title !== undefined
-              ? options.title
-              : route.name === "progress"
-                ? "תהליך"
-                : route.name
+}) => (
+  <>
+    {state.routes.map((route: any, index: number) => {
+      const routeName = route.name as TabRouteName
+      const { options } = descriptors[route.key]
+      const label =
+        options.tabBarLabel !== undefined
+          ? options.tabBarLabel
+          : options.title !== undefined
+          ? options.title
+          : route.name === "progress"
+          ? "תהליך"
+          : route.name
 
-        const isFocused = state.index === index
+      const isFocused = state.index === index
 
-        // Animate tab scale on focus change
-        useEffect(() => {
-          tabScales[index].value = withSpring(isFocused ? 1.1 : 1, { damping: 10 })
-        }, [isFocused, index, tabScales])
+      // Animate tab scale on focus change
+      useEffect(() => {
+        tabScales[index].value = withSpring(isFocused ? 1.1 : 1, { damping: 10 })
+      }, [isFocused])
 
-        // Animated style for each tab
-        const tabAnimatedStyle = useAnimatedStyle(() => {
-          return {
-            transform: [{ scale: tabScales[index].value }],
-          }
-        })
+      const tabAnimatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: tabScales[index].value }],
+      }))
 
-        const onPress = () => {
-          const event = navigation.emit({
-            type: "tabPress",
-            target: route.key,
-            canPreventDefault: true,
-          })
-
-          if (!isFocused && !event.defaultPrevented) {
-            navigation.navigate(route.name)
-          }
+      const onPress = () => {
+        const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true })
+        if (!isFocused && !event.defaultPrevented) {
+          navigation.navigate(route.name)
         }
+      }
 
-        const onLongPress = () => {
-          navigation.emit({
-            type: "tabLongPress",
-            target: route.key,
-          })
-        }
+      const onLongPress = () => {
+        navigation.emit({ type: "tabLongPress", target: route.key })
+      }
 
-        return (
-          <TouchableOpacity
-            key={route.name}
-            accessibilityRole="button"
-            accessibilityState={isFocused ? { selected: true } : {}}
-            accessibilityLabel={options.tabBarAccessibilityLabel}
-            testID={options.tabBarButtonTestID}
-            onPress={route.name === "addImage" ? handleAddPress : onPress}
-            onLongPress={onLongPress}
-            style={[styles.tabbarItem, route.name === "addImage" && styles.addTabItem]}
-            onLayout={(e) => {
-              // Store the x position of each tab for indicator animation
-              setTabPosition(index, e.nativeEvent.layout.x + e.nativeEvent.layout.width / 2)
-            }}
-          >
-            {route.name === "addImage" ? (
-              <Animated.View style={[styles.addButton, addButtonAnimatedStyle]}>
-                {icons[routeName]({ color: "#fff" })}
-              </Animated.View>
-            ) : (
-              <Animated.View style={[styles.tabContent, tabAnimatedStyle]}>
-                {icons[routeName]({
-                  color: isFocused ? primaryColor : greyColor,
-                })}
-                <Text
-                  style={[
-                    styles.tabLabel,
-                    {
-                      color: isFocused ? primaryColor : greyColor,
-                      fontWeight: isFocused ? "600" : "400",
-                    },
-                  ]}
-                >
-                  {label}
-                </Text>
-                {isFocused && <View style={styles.activeIndicator} />}
-              </Animated.View>
-            )}
-          </TouchableOpacity>
-        )
-      })}
-    </>
-  )
-}
+      return (
+        <TouchableOpacity
+          key={route.name}
+          accessibilityRole="button"
+          accessibilityState={isFocused ? { selected: true } : {}}
+          accessibilityLabel={options.tabBarAccessibilityLabel}
+          testID={options.tabBarButtonTestID}
+          onPress={route.name === "addImage" ? handleAddPress : onPress}
+          onLongPress={onLongPress}
+          style={[styles.tabbarItem, route.name === "addImage" && styles.addTabItem]}
+          onLayout={(e) => setTabPosition(index, e.nativeEvent.layout.x + e.nativeEvent.layout.width / 2)}
+        >
+          {route.name === "addImage" ? (
+            <Animated.View style={[styles.addButton, addButtonAnimatedStyle]}>
+              {icons[routeName]({ color: "#fff" })}
+            </Animated.View>
+          ) : (
+            <Animated.View style={[styles.tabContent, tabAnimatedStyle]}>
+              {icons[routeName]({ color: isFocused ? primaryColor : greyColor })}
+              <Text style={[styles.tabLabel, { color: isFocused ? primaryColor : greyColor, fontWeight: isFocused ? "600" : "400" }]}>
+                {label}
+              </Text>
+              {isFocused && <View style={styles.activeIndicator} />}
+            </Animated.View>
+          )}
+        </TouchableOpacity>
+      )
+    })}
+  </>
+)
 
 const styles = StyleSheet.create({
   tabbarContainer: {
@@ -251,7 +201,7 @@ const styles = StyleSheet.create({
   },
   tabbar: {
     width: "100%",
-    flexDirection: "row",
+    flexDirection: "row-reverse",
     justifyContent: "space-between",
     alignItems: "center",
     backgroundColor: Platform.OS === "ios" ? "rgba(255,255,255,0.7)" : "white",
@@ -277,9 +227,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingTop: 5,
   },
-  addTabItem: {
-    marginTop: -30,
-  },
+  addTabItem: { marginTop: -30 },
   addButton: {
     width: 56,
     height: 56,
@@ -292,14 +240,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 8,
     elevation: 8,
-    // Gradient effect with border
     borderWidth: 3,
     borderColor: primaryColorLight,
   },
-  tabLabel: {
-    fontSize: 12,
-    marginTop: 4,
-  },
+  tabLabel: { fontSize: 12, marginTop: 4 },
   activeIndicator: {
     position: "absolute",
     bottom: -8,
@@ -309,5 +253,3 @@ const styles = StyleSheet.create({
     backgroundColor: primaryColor,
   },
 })
-
-export default TabBar

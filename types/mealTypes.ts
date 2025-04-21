@@ -24,3 +24,14 @@ export type Ingredient = {
     portion_size?: number
     portion_unit?: string
   }
+
+  export type Meal = {
+    id?: string
+    user_id: string
+    name: string
+    calories: number
+    protein_g: number
+    carbs_g: number
+    fat_g: number
+    timestamp: string
+  }

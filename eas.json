@@ -1,0 +1,27 @@
+{
+    "cli": {
+      "version": ">= 3.0.0"
+    },
+    "build": {
+      "development": {
+        "developmentClient": true,
+        "distribution": "internal",
+        "env": {
+          "API_URL_DEV": "http://192.168.1.102:5000"
+        }
+      },
+      "preview": {
+        "env": {
+          "API_URL_PROD": "https://a185-176-231-132-160.ngrok-free.app"
+        }
+      },
+      "production": {
+        "env": {
+          "API_URL_PROD": "https://a185-176-231-132-160.ngrok-free.app"
+        }
+      }
+    },
+    "submit": {
+      "production": {}
+    }
+  }

@@ -3,8 +3,8 @@ import { ExpoConfig, ConfigContext } from '@expo/config';
 
 export default ({ config }: ConfigContext): ExpoConfig => {
     const isProd = process.env.NODE_ENV === 'production';
-
-  return {
+ 
+    return {
     ...config,
     name: 'food-tracker-app',
     slug: 'food-tracker-app',
@@ -30,6 +30,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
     plugins: [
       'expo-router',
+      "expo-sqlite",
+      'expo-updates',
       [
         'expo-splash-screen',
         {

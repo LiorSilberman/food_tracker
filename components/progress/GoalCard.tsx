@@ -48,7 +48,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   header: {
-    flexDirection: "row",
+    flexDirection: "row-reverse",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 12,
@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
   motivationalText: {
-    fontSize: 16,
+    fontSize: 15,
     color: "#0891b2",
     fontWeight: "600",
     marginTop: 12,

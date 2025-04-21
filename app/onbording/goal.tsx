@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { View, StyleSheet, ScrollView } from "react-native"
+import { View, StyleSheet, ScrollView, Text } from "react-native"
 import { useRouter } from "expo-router"
 import { useOnboarding } from "../../context/OnboardingContext"
 import { LinearGradient } from "expo-linear-gradient"
@@ -29,9 +29,30 @@ export default function GoalScreen() {
   const titleScale = useSharedValue(0.9)
 
   const goals = [
-    { id: "lose_weight", label: "ירידה במשקל", icon: "trending-down" },
-    { id: "gain_weight", label: "עלייה במשקל", icon: "trending-up" },
-    { id: "build_muscle", label: "העלאת מסת שריר", icon: "barbell" },
+    {
+      id: "lose_weight",
+      label: "ירידה במשקל",
+      icon: "trending-down",
+      description: "לרדת באחוזי שומן ולהיראות חטוב יותר",
+    },
+    {
+      id: "gain_weight",
+      label: "עלייה במשקל",
+      icon: "trending-up",
+      description: "להעלות במשקל בצורה מבוקרת ובריאה",
+    },
+    {
+      id: "build_muscle",
+      label: "העלאת מסת שריר",
+      icon: "barbell",
+      description: "להתחזק, לפתח שרירים ולשפר ביצועים",
+    },
+    {
+      id: "maintain_weight",
+      label: "שימור משקל",
+      icon: "scale-balance",
+      description: "לשמור על הקיים ולחזק את אורח החיים הבריא",
+    },
   ]
 
   useEffect(() => {
@@ -56,9 +77,11 @@ export default function GoalScreen() {
       goal: selected,
     }))
 
-    // Navigate to the appropriate follow-up screen based on the selected goal
+    // Navigate based on goal
     if (selected === "build_muscle") {
       router.push("/onbording/muscleGoal")
+    } else if (selected === "maintain_weight") {
+      router.push("/onbording/welcomeComplete")
     } else {
       router.push("/onbording/weightGoal")
     }

@@ -56,7 +56,7 @@ const styles = StyleSheet.create({
   },
   header: {
     marginBottom: 16,
-    flexDirection: "row",
+    flexDirection: "row-reverse",
     justifyContent: "space-between",
     alignItems: "center",
   },

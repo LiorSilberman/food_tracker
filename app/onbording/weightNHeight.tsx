@@ -160,7 +160,28 @@ export default function WeightHeightScreen() {
           <Animated.View style={[styles.heightDisplayContainer, heightDisplayAnimatedStyle]}>
             <Text style={styles.heightDisplayText}>{height} ס״מ</Text>
           </Animated.View>
+          {isReady && (
+            <View style={styles.bmiContainer}>
+              {(() => {
+                const combinedWeight = Number.parseFloat(`${weightWhole}.${weightDecimal}`);
+                const heightM = height / 100;
+                const bmi = combinedWeight / (heightM * heightM);
+                const minWeight = (18.5 * heightM * heightM).toFixed(1);
+                const maxWeight = (24.9 * heightM * heightM).toFixed(1);
 
+                return (
+                  <>
+                    <Text style={styles.bmiText}>
+                      BMI נוכחי: {bmi.toFixed(1)}
+                    </Text>
+                    <Text style={styles.bmiRangeText}>
+                      טווח משקל תקין עבורך: {minWeight} - {maxWeight} ק״ג
+                    </Text>
+                  </>
+                );
+              })()}
+            </View>
+          )}
           <View style={styles.heightContentContainer}>
             <Animated.View entering={FadeInDown.delay(1000).duration(800)} style={styles.heightPickerContainer}>
               <View style={styles.heightPickerWrapper}>
@@ -321,5 +342,20 @@ const styles = StyleSheet.create({
   buttonContainer: {
     marginTop: "auto",
     marginBottom: 40,
+  },
+  bmiContainer: {
+    alignItems: "center",
+    marginTop: 8,
+    paddingHorizontal: 16,
+  },
+  bmiText: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#0c4a6e",
+  },
+  bmiRangeText: {
+    fontSize: 16,
+    color: "#0369a1",
+    marginTop: 4,
   },
 })

@@ -17,6 +17,7 @@ import Animated, {
 } from "react-native-reanimated"
 import { Ionicons } from "@expo/vector-icons"
 import AnimatedProgressBar from "../../components/ui/AnimatedProgressBar"
+import AnimatedBackButton from "@/components/ui/AnimatedBackButton"
 
 export default function WelcomeCompleteScreen() {
   const router = useRouter()
@@ -55,7 +56,7 @@ export default function WelcomeCompleteScreen() {
   const handleStart = () => {
 
     try {
-      router.push("/(tabs)/home")
+      router.push("/auth/signup")
     } catch (error2) {
       console.log("Second navigation error:", error2)
     }
@@ -76,6 +77,7 @@ export default function WelcomeCompleteScreen() {
   return (
     <LinearGradient colors={["#ecfdf5", "#d1fae5", "#a7f3d0"]} style={styles.gradient}>
       <View style={styles.container}>
+      <AnimatedBackButton onPress={() => router.replace("/onbording/goal")} />
         <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
           <Animated.View entering={FadeIn.delay(100).duration(600)} style={styles.progressContainer}>
             <AnimatedProgressBar step={11} totalSteps={11} accentColor="#10b981" />

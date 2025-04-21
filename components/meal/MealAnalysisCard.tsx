@@ -259,6 +259,7 @@ const MealAnalysisCard = ({ image, result, onResult, onDismiss, onSave }: Props)
   const sendToAnalyze = async () => {
     setLoading(true)
     try {
+      console.log(API_URL);
       const res = await fetch(`${API_URL}/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -752,7 +753,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 16,
     marginTop: 20,
-    marginBottom: 30,
+    marginBottom: 60,
     shadowColor: "#000",
     shadowOpacity: 0.12,
     shadowOffset: { width: 0, height: 6 },

@@ -66,10 +66,19 @@ export default function ActivityTypeScreen() {
 
             <Animated.View entering={FadeInDown.delay(800).duration(500)}>
               <AnimatedOption
-                label="משולב (אירובי ואנאירובי)"
+                label="גם וגם – לדוגמה קרוספיט"
                 icon="fitness"
                 isSelected={selected === "mixed"}
                 onSelect={() => setSelected("mixed")}
+                accentColor="#0ea5e9"
+              />
+            </Animated.View>
+            <Animated.View entering={FadeInDown.delay(800).duration(500)}>
+              <AnimatedOption
+                label="לא מתאמן באופן קבוע "
+                icon="tv"
+                isSelected={selected === "no-sport"}
+                onSelect={() => setSelected("no-sport")}
                 accentColor="#0ea5e9"
               />
             </Animated.View>

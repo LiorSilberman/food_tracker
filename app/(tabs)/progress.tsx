@@ -1,465 +1,343 @@
-// app/(tabs)/progress.tsx
 "use client"
 
-import React, { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
-    View,
-    Text,
-    StyleSheet,
-    ScrollView,
-    ActivityIndicator,
-    Dimensions,
-    Platform,
-    KeyboardAvoidingView,
+  View,
+  Text,
+  ScrollView,
+  ActivityIndicator,
+  Dimensions,
+  Platform,
+  KeyboardAvoidingView,
+  TouchableOpacity,
 } from "react-native"
-import { SafeAreaView } from "react-native-safe-area-context"
 import { LinearGradient } from "expo-linear-gradient"
-import { Stack } from "expo-router"
+import { Stack, useRouter } from "expo-router"
 import { useIsFocused } from "@react-navigation/native"
+import { formatDate } from "@/utils/dateHelpers"
 import { Ionicons } from "@expo/vector-icons"
-import { formatDate, getDayName } from "@/utils/dateHelpers" // Date helper functions
+import * as Animatable from "react-native-animatable"
+
 import WeightSummaryCard from "@/components/progress/WeightSummaryCard"
 import GoalCard from "@/components/progress/GoalCard"
 import WeightTrackingChart from "@/components/progress/WeightTrackingChart"
 import DailyMacrosModal from "@/components/progress/DailyMacrosModal"
 import WeightUpdateModal from "@/components/progress/WeightUpdateModal"
 import TimeRangeBarChart, { type DayData } from "@/components/ui/TimeRangeBarChart"
-
-// Import Firestore and authentication from Firebase
+import { fetchOnboardingData } from "@/onboardingDB"
 import { auth } from "@/firebase"
+import { getFirestore } from "firebase/firestore"
+import { saveWeightToFirestoreAndSQLite } from "@/services/weightService"
+import { useUserStore } from "@/stores/userStore"
 import {
-    getFirestore,
-    collection,
-    query,
-    where,
-    orderBy,
-    getDocs,
-    doc,
-    getDoc,
-    addDoc,
-    Timestamp,
-} from "firebase/firestore"
+  fetchWeightHistoryFromSQLite,
+  fetchMealsPastYearFromSQLite,
+  fetchHourlyCaloriesFromSQLite,
+} from "@/services/sqliteService"
+import { db as sqliteDb } from "@/dbInit"
 
 const db = getFirestore()
 const { width } = Dimensions.get("window")
 
 const ProgressScreen = () => {
-    // State variables
-    const [loading, setLoading] = useState(true)
-    const [goalData, setGoalData] = useState<any>(null)
-    const [weightHistory, setWeightHistory] = useState<any[]>([])
-    const [currentWeight, setCurrentWeight] = useState<number | null>(null)
-    const [progress, setProgress] = useState(0)
-    const [weightChangeDirection, setWeightChangeDirection] = useState<"up" | "down" | "none">("none")
-    const [weightChangeAmount, setWeightChangeAmount] = useState<number>(0)
-    const [timeRangeData, setTimeRangeData] = useState<{ [key: string]: DayData[] }>({})
-    const [calorieData, setCalorieData] = useState<any[]>([])
-    const [selectedDay, setSelectedDay] = useState<any>(null)
-    const [modalVisible, setModalVisible] = useState(false)
-    const [weightModalVisible, setWeightModalVisible] = useState(false)
-    const [newWeight, setNewWeight] = useState("")
+  const [loading, setLoading] = useState(true)
+  const [goalData, setGoalData] = useState<any>(null)
+  const [weightHistory, setWeightHistory] = useState<any[]>([])
+  const [currentWeight, setCurrentWeight] = useState<number | null>(null)
+  const [progress, setProgress] = useState(0)
+  const [weightChangeDirection, setWeightChangeDirection] = useState<"up" | "down" | "none">("none")
+  const [weightChangeAmount, setWeightChangeAmount] = useState<number>(0)
+  const [timeRangeData, setTimeRangeData] = useState<{ [key: string]: DayData[] }>({})
+  const [calorieData, setCalorieData] = useState<any[]>([])
+  const [selectedDay, setSelectedDay] = useState<any>(null)
+  const [modalVisible, setModalVisible] = useState(false)
+  const [weightModalVisible, setWeightModalVisible] = useState(false)
+  const [newWeight, setNewWeight] = useState("")
+  const dailyCalories = useUserStore((s) => s.dailyCalories)
 
-    const isFocused = useIsFocused()
+  const isFocused = useIsFocused()
+  const router = useRouter()
 
-    // Helper function: Calculate progress percentage
-    const calculateProgress = useCallback((current: number | null, goal: any) => {
-        if (!current || !goal || goal.startWeight === goal.targetWeight) return 0
-        const weightDiff = Math.abs(goal.startWeight - goal.targetWeight)
-        const currentDiff = Math.abs(current - goal.targetWeight)
-        const progressPercent = ((weightDiff - currentDiff) / weightDiff) * 100
-        return Math.min(100, Math.max(0, progressPercent))
-    }, [])
+  const calculateProgress = useCallback((current: number | null, goal: any) => {
+    if (!current || !goal || goal.startWeight === goal.targetWeight) return 0
+    const weightDiff = Math.abs(goal.startWeight - goal.targetWeight)
+    const currentDiff = Math.abs(current - goal.targetWeight)
+    const progressPercent = ((weightDiff - currentDiff) / weightDiff) * 100
+    return Math.min(100, Math.max(0, progressPercent))
+  }, [])
 
-    // Helper function: Calculate weight change from history
-    const calculateWeightChange = useCallback((current: number | null, history: any[]) => {
-        if (!current || history.length < 2) return { direction: "none" as const, amount: 0 }
-        const sortedHistory = [...history].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-        if (sortedHistory.length < 2) return { direction: "none" as const, amount: 0 }
-        const previousWeight = sortedHistory[1].weight
-        const diff = current - previousWeight
-        return {
-            direction: diff > 0 ? ("up" as const) : diff < 0 ? ("down" as const) : ("none" as const),
-            amount: Math.abs(diff),
+  const calculateWeightChange = useCallback(
+    (current: number | null, history: { timestamp: Date; weight: number }[]) => {
+      if (!current || history.length < 2) {
+        return { direction: "none", amount: 0 } as const
+      }
+      const sorted = [...history].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+      const prev = sorted[1].weight
+      const diff = current - prev
+      const direction = diff > 0 ? "up" : diff < 0 ? "down" : "none"
+      return { direction, amount: Math.abs(diff) } as const
+    },
+    [],
+  )
+
+  const fetchUserData = useCallback(async () => {
+    setLoading(true)
+    try {
+      const user = auth.currentUser
+      if (!user) return
+
+      // 1) Grab onboarding from local SQLite
+      const onboard = await fetchOnboardingData(user.uid)
+      const startWeight = onboard.weight ?? 0
+      const startDateStr = onboard.createdAt ?? new Date().toISOString()
+      const startDate = new Date(startDateStr)
+
+      // Build your goalData from that
+      const goal = {
+        startWeight,
+        targetWeight: onboard.targetWeight ?? 0,
+        goal: onboard.goal ?? "maintain_weight",
+        startDate,
+        weeklyRate: onboard.weeklyRate ?? 0.5,
+      }
+      setGoalData(goal)
+
+      // 2) Load any existing weight history
+      let weights = await fetchWeightHistoryFromSQLite(user.uid)
+
+      // 3) If none, fall back to onboarding values
+      if (weights.length === 0) {
+        weights = [
+          {
+            id: "onboarding-weight",
+            weight: startWeight,
+            timestamp: startDate,
+          },
+        ]
+        // (optionally seed into SQLite as well)
+        await sqliteDb.runAsync(`INSERT INTO weight (id, user_id, weight, timestamp) VALUES (?, ?, ?, ?);`, [
+          "onboarding-weight",
+          user.uid,
+          startWeight,
+          startDate.toISOString(),
+        ])
+      }
+
+      // 4) Store in state and compute currentWeight, progress, etc.
+      setWeightHistory(weights)
+      const current = weights[weights.length - 1].weight
+      setCurrentWeight(current)
+      setProgress(calculateProgress(current, goal))
+      const { direction, amount } = calculateWeightChange(current, weights)
+      setWeightChangeDirection(direction)
+      setWeightChangeAmount(amount)
+
+      // Use SQLite to fetch meal data
+      const mealRows = await fetchMealsPastYearFromSQLite(user.uid)
+      const mealsByDay: { [key: string]: any } = {}
+      for (const meal of mealRows) {
+        const dateKey = meal.timestamp.toISOString().split("T")[0]
+        if (!mealsByDay[dateKey]) {
+          mealsByDay[dateKey] = {
+            date: meal.timestamp,
+            calories: 0,
+            protein_g: 0,
+            carbs_g: 0,
+            fat_g: 0,
+            meals: [],
+          }
         }
-    }, [])
+        mealsByDay[dateKey].calories += meal.calories || 0
+        mealsByDay[dateKey].protein_g += meal.protein_g || 0
+        mealsByDay[dateKey].carbs_g += meal.carbs_g || 0
+        mealsByDay[dateKey].fat_g += meal.fat_g || 0
+        mealsByDay[dateKey].meals.push(meal)
+      }
 
-    // Fetch user data from Firestore
-    const fetchUserData = useCallback(async () => {
-        setLoading(true)
-        try {
-            const user = auth.currentUser
-            if (user) {
-                // Fetch user goal data from "users" collection
-                const userRef = doc(db, "users", user.uid)
-                const userSnap = await getDoc(userRef)
+      const sortedCalorieData = Object.keys(mealsByDay)
+        .sort()
+        .map((key) => mealsByDay[key])
 
-                if (userSnap.exists()) {
-                    const userData = userSnap.data()
-                    const onboardingData = userData.onboarding || {}
-                    // Assuming createdAt is a Firestore Timestamp; if not, adjust accordingly
-                    const createdDate = new Date(userData.createdAt)
+      setCalorieData(sortedCalorieData)
 
-                    const goalInfo = {
-                        startWeight: onboardingData.weight || 0,
-                        targetWeight: onboardingData.targetWeight || 0,
-                        goal: onboardingData.goal || "maintain_weight",
-                        startDate: createdDate,
-                        weeklyRate: onboardingData.weeklyRate || 0.5,
-                    }
-                    setGoalData(goalInfo)
-
-                    // Fetch weight history
-                    const weightRef = collection(db, "users", user.uid, "weight")
-                    const weightQuery = query(weightRef, orderBy("timestamp", "asc"))
-                    const weightSnap = await getDocs(weightQuery)
-                    const weightData: any[] = []
-                    weightSnap.forEach((doc) => {
-                        const data = doc.data()
-                        weightData.push({
-                            id: doc.id,
-                            weight: data.weight,
-                            timestamp: data.timestamp.toDate(),
-                        })
-                    })
-
-                    // Add starting weight if not present
-                    if (
-                        weightData.length === 0 ||
-                        (weightData.length > 0 &&
-                            weightData[0].timestamp.getTime() > goalInfo.startDate.getTime())
-                    ) {
-                        weightData.unshift({
-                            id: "starting-weight",
-                            weight: goalInfo.startWeight,
-                            timestamp: goalInfo.startDate,
-                        })
-                    }
-                    setWeightHistory(weightData)
-
-                    const currentWeightValue = weightData[weightData.length - 1].weight
-                    setCurrentWeight(currentWeightValue)
-                    setProgress(calculateProgress(currentWeightValue, goalInfo))
-
-                    const { direction, amount } = calculateWeightChange(currentWeightValue, weightData)
-                    setWeightChangeDirection(direction)
-                    setWeightChangeAmount(amount)
-
-                    // Fetch meal data (for calorie consumption) for the past year
-                    const today = new Date()
-                    const oneYearAgo = new Date(today)
-                    oneYearAgo.setFullYear(today.getFullYear() - 1)
-                    const mealsRef = collection(db, "users", user.uid, "meals")
-                    const mealsQuery = query(
-                        mealsRef,
-                        where("timestamp", ">=", Timestamp.fromDate(oneYearAgo)),
-                        orderBy("timestamp", "asc")
-                    )
-                    const mealsSnap = await getDocs(mealsQuery)
-                    const mealsByDay: { [key: string]: any } = {}
-
-                    mealsSnap.forEach((doc) => {
-                        const mealData = doc.data()
-                        const mealDate = mealData.timestamp.toDate()
-                        const dateKey = mealDate.toISOString().split("T")[0]
-                        if (!mealsByDay[dateKey]) {
-                            mealsByDay[dateKey] = { date: mealDate, calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, meals: [] }
-                        }
-                        mealsByDay[dateKey].calories += mealData.calories || 0
-                        mealsByDay[dateKey].protein_g += mealData.protein_g || 0
-                        mealsByDay[dateKey].carbs_g += mealData.carbs_g || 0
-                        mealsByDay[dateKey].fat_g += mealData.fat_g || 0
-                        mealsByDay[dateKey].meals.push(mealData)
-                    })
-
-                    // Inside your fetchUserData function after fetching meals for the day
-                    // const today = new Date();
-                    const startOfDay = new Date(today);
-                    startOfDay.setHours(0, 0, 0, 0);
-
-                    // Query today's meals by hour: fetch meals since startOfDay until now
-                    const mealsDayQuery = query(
-                        mealsRef,
-                        where("timestamp", ">=", Timestamp.fromDate(startOfDay)),
-                        where("timestamp", "<=", Timestamp.fromDate(today)),
-                        orderBy("timestamp", "asc")
-                    );
-                    const mealsDaySnap = await getDocs(mealsDayQuery);
-
-                    // Initialize an object to store total calories for each hour
-                    const hourlyCaloriesMap: { [hour: number]: number } = {};
-
-                    // Iterate over each meal document and accumulate calories by hour
-                    mealsDaySnap.forEach((doc) => {
-                        const data = doc.data();
-                        const mealDate = data.timestamp.toDate();
-                        const hour = mealDate.getHours();
-                        if (!hourlyCaloriesMap[hour]) {
-                            hourlyCaloriesMap[hour] = 0;
-                        }
-                        hourlyCaloriesMap[hour] += data.calories || 0;
-                    });
-
-                    // Build the dayData array with 24 data points – one for each hour of the day
-                    const dayData: DayData[] = [];
-                    for (let i = 0; i < 24; i++) {
-                        const hourTimestamp = new Date(startOfDay);
-                        hourTimestamp.setHours(i);
-                        dayData.push({
-                            date: hourTimestamp.toISOString(), // ISO string representing that hour
-                            value: hourlyCaloriesMap[i] || 0,    // Total calories for that hour or 0 if none
-                        });
-                    }
-
-                    // Set the "day" range data in state
-                    setTimeRangeData({
-                        ...timeRangeData,  // in case you have other ranges
-                        day: dayData,
-                    });
-
-                    // For legacy calorie data (optional): sort and convert the mealsByDay data to an array
-                    const sortedCalorieData = Object.keys(mealsByDay)
-                        .sort()
-                        .map((dateKey) => {
-                            const dayMeal = mealsByDay[dateKey]
-                            return {
-                                date: new Date(dayMeal.date),
-                                calories: dayMeal.calories,
-                                protein_g: dayMeal.protein_g,
-                                carbs_g: dayMeal.carbs_g,
-                                fat_g: dayMeal.fat_g,
-                                meals: dayMeal.meals,
-                            }
-                        })
-                    setCalorieData(sortedCalorieData)
-                } else {
-                    console.error("User document not found")
-                }
-            } else {
-                console.log("No authenticated user, falling back to demo data")
-                // Optionally, set demo data when the user is not logged in.
-            }
-        } catch (error) {
-            console.error("Error fetching user data:", error)
-        } finally {
-            setLoading(false)
-        }
-    }, [calculateProgress, calculateWeightChange])
-
-    useEffect(() => {
-        if (isFocused) {
-            fetchUserData()
-        }
-    }, [isFocused, fetchUserData])
-
-    // Prepare line chart data using date helper (formatDate)
-    const lineChartData = {
-        labels: weightHistory.map((entry) => formatDate(entry.timestamp)),
-        datasets: [
-            {
-                data: weightHistory.map((entry) => entry.weight),
-                color: (opacity = 1) => `rgba(50,203,198,${opacity})`,
-                strokeWidth: 2,
-            },
-            ...(goalData && goalData.targetWeight
-                ? [
-                    {
-                        data: Array(weightHistory.length).fill(goalData.targetWeight),
-                        color: (opacity = 1) => `rgba(233,88,153,${opacity})`,
-                        strokeWidth: 2,
-                        // @ts-ignore
-                        strokeDashArray: [5, 5],
-                    },
-                ]
-                : []),
-        ],
-        legend: ["משקל (ק״ג)"],
+      // Use SQLite to fetch hourly calorie data
+      const hourly = await fetchHourlyCaloriesFromSQLite(user.uid)
+      setTimeRangeData({ day: hourly })
+    } catch (e) {
+      console.error("Error fetching user data:", e)
+    } finally {
+      setLoading(false)
     }
+  }, [calculateProgress, calculateWeightChange, router])
 
-    const chartConfig = {
-        backgroundGradientFrom: "#ffffff",
-        backgroundGradientTo: "#ffffff",
-        decimalPlaces: 0,
-        color: (opacity = 1) => `rgba(50, 203, 198, ${opacity})`,
-        labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-        style: {
-            borderRadius: 16,
-        },
-        propsForDots: {
-            r: "6",
-            strokeWidth: "2",
-            stroke: "#ffa726",
-        },
+  useEffect(() => {
+    if (isFocused) fetchUserData()
+  }, [isFocused, fetchUserData])
+
+  const lineChartData = {
+    labels: weightHistory.map((e) => formatDate(e.timestamp)),
+    datasets: [
+      { data: weightHistory.map((e) => e.weight) },
+      ...(goalData?.targetWeight ? [{ data: Array(weightHistory.length).fill(goalData.targetWeight) }] : []),
+    ],
+    legend: ["משקל (ק״ג)"],
+  }
+
+  const chartConfig = {
+    backgroundGradientFrom: "#fff",
+    backgroundGradientTo: "#fff",
+    decimalPlaces: 0,
+    color: (o = 1) => `rgba(50,203,198,${o})`,
+    labelColor: (o = 1) => `rgba(0,0,0,${o})`,
+    style: { borderRadius: 16 },
+    propsForDots: { r: "6", strokeWidth: "2", stroke: "#ffa726" },
+  }
+
+  const handleBarPress = (d: DayData) => {
+    const key = new Date(d.date).toISOString().split("T")[0]
+    const info = calorieData.find((c) => new Date(c.date).toISOString().split("T")[0] === key)
+    if (info) {
+      setSelectedDay(info)
+      setModalVisible(true)
     }
+  }
 
-    // Handler for bar press on TimeRangeBarChart
-    const handleBarPress = (dayData: DayData) => {
-        const dayStr = new Date(dayData.date).toISOString().split("T")[0]
-        const dayInfo = calorieData.find((d) => new Date(d.date).toISOString().split("T")[0] === dayStr)
-        if (dayInfo) {
-            setSelectedDay(dayInfo)
-            setModalVisible(true)
-        }
+  const handleWeightUpdate = async () => {
+    if (!newWeight) return
+    try {
+      const w = Number.parseFloat(newWeight)
+      await saveWeightToFirestoreAndSQLite(w)
+      await fetchUserData()
+      setWeightModalVisible(false)
+      setNewWeight("")
+    } catch (e) {
+      console.error("Error updating weight:", e)
     }
+  }
 
-    const handleWeightUpdate = async () => {
-        if (!newWeight) return;
+  return (
+    <>
+      <Stack.Screen options={{ headerShown: false, title: "תהליך" }} />
 
-        try {
-            const weightValue = parseFloat(newWeight);
-            const user = auth.currentUser;
-            if (!user) return;
+      {loading ? (
+        <LinearGradient
+          colors={["#f0f9ff", "#e0f2fe", "#d8f3dc"]}
+          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+        >
+          <ActivityIndicator size="large" color="#0891b2" />
+          <Text style={{ marginTop: 12, fontSize: 16, color: "#0891b2" }}>טוען נתונים...</Text>
+        </LinearGradient>
+      ) : (
+        <LinearGradient
+          colors={["#f0f9ff", "#e0f2fe", "#d8f3dc"]}
+          style={{ flex: 1, paddingTop: Platform.OS === "ios" ? 60 : 40 }}
+        >
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+            <View
+              style={{
+                paddingHorizontal: 20,
+                paddingBottom: 20,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
 
-            const weightRef = collection(db, "users", user.uid, "weight");
-            await addDoc(weightRef, {
-                weight: weightValue,
-                timestamp: Timestamp.now(),
-            });
+              }}
+            >
+              <TouchableOpacity
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  backgroundColor: "rgba(255, 255, 255, 0.8)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  shadowColor: "#000",
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.1,
+                  shadowRadius: 4,
+                  elevation: 2,
+                }}
+                onPress={() => router.replace("/home")}
+              >
+                <Ionicons name="chevron-back" size={28} color="#0891b2" />
+              </TouchableOpacity>
 
-            // Optionally, re-fetch user data to update weight history and progress
-            await fetchUserData();
+              <Animatable.View animation="fadeIn" duration={800}>
+                <Text style={{ fontSize: 28, fontWeight: "800", color: "#0f172a", textAlign: "right" }}>
+                  ההתקדמות שלך
+                </Text>
+                <Text style={{ fontSize: 14, color: "#64748b", textAlign: "right", marginTop: 4 }}>
+                  {new Date().toLocaleDateString("he-IL", {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                  })}
+                </Text>
+              </Animatable.View>
+            </View>
 
-            setWeightModalVisible(false);
-            setNewWeight("");
-        } catch (error) {
-            console.error("Error updating weight:", error);
-        }
-    };
+            <ScrollView contentContainerStyle={{ paddingBottom: 100, paddingHorizontal: 20 }}>
+              <WeightSummaryCard
+                currentWeight={currentWeight}
+                goalData={goalData}
+                weightChangeDirection={weightChangeDirection}
+                weightChangeAmount={weightChangeAmount}
+                onPressUpdate={() => setWeightModalVisible(true)}
+                getRemainingWeight={(cur, tgt) => {
+                  const diff = Math.abs(cur - tgt).toFixed(1)
+                  return cur > tgt ? `נותרו ${diff} ק"ג להורדה` : `נותרו ${diff} ק"ג לעלייה`
+                }}
+              />
 
-    return (
-        <>
-            <Stack.Screen options={{ headerShown: false, title: "תהליך" }} />
+              <GoalCard
+                goalData={goalData}
+                progress={progress}
+                getGoalDescription={() => {
+                  if (!goalData || !currentWeight) return ""
+                  const d = Math.abs(goalData.targetWeight - currentWeight).toFixed(1)
+                  switch (goalData.goal) {
+                    case "lose_weight":
+                      return `ירידה במשקל ${d} ק״ג`
+                    case "gain_weight":
+                      return `עלייה במשקל ${d} ק״ג`
+                    case "build_muscle":
+                      return "בניית שריר ושיפור הרכב גוף"
+                    default:
+                      return "שמירה על משקל"
+                  }
+                }}
+                getMotivationalMessage={(p) => {
+                  if (p >= 100) return "כל הכבוד! השגת את היעד שלך! 🎉"
+                  if (p >= 75) return "כמעט שם! עוד קצת מאמץ ותגיע ליעד! 💪"
+                  if (p >= 50) return "חצי דרך! אתה עושה עבודה נהדרת! 🌟"
+                  if (p >= 25) return "התחלה מצוינת! המשך כך! 🚀"
+                  return "כל מסע מתחיל בצעד קטן. אתה בדרך הנכונה! 👣"
+                }}
+              />
 
-            {loading ? (
-                <LinearGradient colors={["#f0f9ff", "#e0f2fe", "#d8f3dc"]} style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color="#0891b2" />
-                    <Text style={styles.loadingText}>טוען נתונים...</Text>
-                </LinearGradient>
-            ) : (
-                <SafeAreaView style={{ flex: 1 }}>
-                    <LinearGradient colors={["#f0f9ff", "#e0f2fe", "#d8f3dc"]} style={styles.container}>
-                        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-                            <ScrollView contentContainerStyle={styles.scrollContent}>
-                                {/* Header */}
-                                <View style={styles.header}>
-                                    <Text style={styles.title}>ההתקדמות שלך</Text>
-                                    <Text style={styles.dayName}>{getDayName(new Date())}</Text>
-                                </View>
+              <WeightTrackingChart
+                lineChartData={lineChartData}
+                chartConfig={chartConfig}
+                weightHistory={weightHistory}
+              />
 
-                                {/* Weight Summary Card */}
-                                <WeightSummaryCard
-                                    currentWeight={currentWeight}
-                                    goalData={goalData}
-                                    weightChangeDirection={weightChangeDirection}
-                                    weightChangeAmount={weightChangeAmount}
-                                    onPressUpdate={() => setWeightModalVisible(true)}
-                                    getRemainingWeight={(cur, target) => {
-                                        const diff = Math.abs(cur - target).toFixed(1)
-                                        return cur > target
-                                            ? `נותרו ${diff} ק"ג להורדה`
-                                            : `נותרו ${diff} ק"ג לעלייה`
-                                    }}
-                                />
+              <TimeRangeBarChart title="צריכת קלוריות" valueLabel="קלוריות" targetCaloriesValue={dailyCalories} />
+            </ScrollView>
 
-                                {/* Goal Card */}
-                                <GoalCard
-                                    goalData={goalData}
-                                    progress={progress}
-                                    getGoalDescription={() => {
-                                        if (!goalData || !currentWeight) return ""
-                                        let description = ""
-                                        const weightDiff = Math.abs(goalData.targetWeight - currentWeight).toFixed(1)
-                                        switch (goalData.goal) {
-                                            case "lose_weight":
-                                                description = `ירידה במשקל ${weightDiff} ק״ג`
-                                                break
-                                            case "gain_weight":
-                                                description = `עלייה במשקל ${weightDiff} ק״ג`
-                                                break
-                                            case "build_muscle":
-                                                description = `בניית שריר ושיפור הרכב גוף`
-                                                break
-                                            default:
-                                                description = `שמירה על משקל`
-                                        }
-                                        return description
-                                    }}
-                                    getMotivationalMessage={(prog) => {
-                                        if (prog >= 100) return "כל הכבוד! השגת את היעד שלך! 🎉"
-                                        if (prog >= 75) return "כמעט שם! עוד קצת מאמץ ותגיע ליעד! 💪"
-                                        if (prog >= 50) return "חצי דרך! אתה עושה עבודה נהדרת! 🌟"
-                                        if (prog >= 25) return "התחלה מצוינת! המשך כך! 🚀"
-                                        return "כל מסע מתחיל בצעד קטן. אתה בדרך הנכונה! 👣"
-                                    }}
-                                />
+            <DailyMacrosModal visible={modalVisible} selectedDay={selectedDay} onClose={() => setModalVisible(false)} />
 
-                                {/* Weight Tracking Chart */}
-                                <WeightTrackingChart
-                                    lineChartData={lineChartData}
-                                    chartConfig={chartConfig}
-                                    weightHistory={weightHistory}
-                                />
-
-                                {/* Calorie Chart */}
-                                <TimeRangeBarChart
-                                    // dataByRange={timeRangeData}
-                                    // onBarPress={handleBarPress}
-                                    // dailyTarget={2000} // Replace with the user's actual daily target if available
-                                    title="צריכת קלוריות"
-                                    valueLabel="קלוריות"
-                                />
-                            </ScrollView>
-
-                            <DailyMacrosModal visible={modalVisible} selectedDay={selectedDay} onClose={() => setModalVisible(false)} />
-
-                            <WeightUpdateModal
-                                visible={weightModalVisible}
-                                newWeight={newWeight}
-                                onChangeWeight={setNewWeight}
-                                onUpdate={handleWeightUpdate}
-                                onCancel={() => setWeightModalVisible(false)}
-                            />
-                        </KeyboardAvoidingView>
-                    </LinearGradient>
-                </SafeAreaView>
-            )}
-        </>
-    )
+            <WeightUpdateModal
+              visible={weightModalVisible}
+              newWeight={newWeight}
+              onChangeWeight={setNewWeight}
+              onUpdate={handleWeightUpdate}
+              onCancel={() => setWeightModalVisible(false)}
+            />
+          </KeyboardAvoidingView>
+        </LinearGradient>
+      )}
+    </>
+  )
 }
-
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        paddingTop: Platform.OS === "ios" ? 0 : 40,
-    },
-    loadingContainer: {
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-    },
-    loadingText: {
-        marginTop: 12,
-        fontSize: 16,
-        color: "#0891b2",
-    },
-    scrollContent: {
-        paddingBottom: 100,
-        paddingHorizontal: 20,
-    },
-    header: {
-        marginBottom: 16,
-        alignItems: "center",
-    },
-    title: {
-        fontSize: 28,
-        fontWeight: "800",
-        color: "#0f172a",
-    },
-    dayName: {
-        fontSize: 18,
-        fontWeight: "600",
-        color: "#64748b",
-        marginTop: 4,
-    },
-})
 
 export default ProgressScreen

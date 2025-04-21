@@ -13,6 +13,11 @@ import {
   Alert,
   Dimensions,
   Image,
+  Modal,
+  Pressable,
+  Platform,
+  KeyboardAvoidingView,
+  SafeAreaView,
 } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import Animated, {
@@ -22,9 +27,14 @@ import Animated, {
   withSpring,
   withDelay,
   interpolate,
-  withRepeat, // Import withRepeat
+  Easing,
+  runOnJS,
 } from "react-native-reanimated"
 import PlateChart from "./PlateChart"
+import { API_URL } from "@/config"
+
+// Import the SpoonVisualization component at the top with other imports
+import SpoonVisualization from "./spoonVisualization"
 
 // Types
 export type Ingredient = {
@@ -34,6 +44,7 @@ export type Ingredient = {
   image?: string
   quantity: number
   unit: string
+  fullness?: "flat" | "standard" | "heaped"
   calories: number
   protein_g: number
   carbs_g: number
@@ -64,8 +75,8 @@ type AutocompleteItem = {
   image?: string
   serving_size?: string
   serving_quantity?: number
-  actual_quantity?: number // Add this field for the actual quantity
-  actual_unit?: string // Add this field for the unit
+  actual_quantity?: number
+  actual_unit?: string
   nutrition?: {
     calories: number
     protein_g: number
@@ -76,7 +87,9 @@ type AutocompleteItem = {
 
 type Props = {
   onSaveMeal?: (meal: CustomMeal) => Promise<void>
-  onCancel?: () => void
+  onClose: () => void
+  // The component can be used either as a standalone modal or embedded in another modal
+  asModal?: boolean
 }
 
 // Unit conversion factors (approximate)
@@ -85,14 +98,33 @@ const unitConversions = {
   כוס: 240, // 1 cup ≈ 240g
   כף: 15, // 1 tablespoon ≈ 15g
   כפית: 5, // 1 teaspoon ≈ 5g
-  יחידה: 100, // 1 unit (default to 100g)
   ליטר: 1000, // 1 liter ≈ 1000g (for water-based liquids)
   'מ"ל': 1, // 1 ml ≈ 1g (for water-based liquids)
 }
 
-export default function CustomMealBuilder({ onSaveMeal, onCancel }: Props) {
-  // Add this at the beginning of the component function body
-  console.log("Rendering CustomMealBuilder component")
+// Spoon profiles for different fullness levels
+const spoonProfiles = {
+  כפית: {
+    flat: 4,
+    standard: 5,
+    heaped: 6.5,
+  },
+  כף: {
+    flat: 12,
+    standard: 15,
+    heaped: 18,
+  },
+  כוס: {
+    flat: 220,
+    standard: 240,
+    heaped: 270,
+  },
+}
+
+// Measurable units that support fullness
+const measurableUnits = ["כף", "כפית", "כוס"]
+
+export default function CustomMealBuilder({ onSaveMeal, onClose, asModal = false }: Props) {
   // State
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<AutocompleteItem[]>([])
@@ -101,13 +133,14 @@ export default function CustomMealBuilder({ onSaveMeal, onCancel }: Props) {
   const [currentIngredient, setCurrentIngredient] = useState<AutocompleteItem | null>(null)
   const [quantity, setQuantity] = useState("100")
   const [unit, setUnit] = useState("גרם")
+  const [fullness, setFullness] = useState<"flat" | "standard" | "heaped">("standard")
   const [isAddingIngredient, setIsAddingIngredient] = useState(false)
   const [mealName, setMealName] = useState("")
   const [isSaving, setIsSaving] = useState(false)
   const [editingIngredientId, setEditingIngredientId] = useState<string | null>(null)
+  const [visible, setVisible] = useState(true)
 
   // Animation values
-  const searchOpacity = useSharedValue(1)
   const addIngredientHeight = useSharedValue(0)
   const ingredientListOpacity = useSharedValue(0)
   const nutritionOpacity = useSharedValue(0)
@@ -119,6 +152,7 @@ export default function CustomMealBuilder({ onSaveMeal, onCancel }: Props) {
   const searchInputRef = useRef<TextInput>(null)
   const quantityInputRef = useRef<TextInput>(null)
   const mealNameInputRef = useRef<TextInput>(null)
+  const scrollViewRef = useRef<ScrollView>(null)
 
   // Calculate total nutrition
   const totalNutrition = selectedIngredients.reduce(
@@ -134,13 +168,10 @@ export default function CustomMealBuilder({ onSaveMeal, onCancel }: Props) {
   )
 
   // Animated styles
-  const searchAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: searchOpacity.value,
-  }))
-
   const addIngredientAnimatedStyle = useAnimatedStyle(() => ({
     height: addIngredientHeight.value,
     opacity: interpolate(addIngredientHeight.value, [0, 200], [0, 1]),
+    overflow: "hidden",
   }))
 
   const ingredientListAnimatedStyle = useAnimatedStyle(() => ({
@@ -162,6 +193,13 @@ export default function CustomMealBuilder({ onSaveMeal, onCancel }: Props) {
     transform: [{ rotate: `${loadingRotation.value}deg` }],
   }))
 
+  // Auto-focus search input when component mounts
+  useEffect(() => {
+    setTimeout(() => {
+      searchInputRef.current?.focus()
+    }, 300)
+  }, [])
+
   // Effects
   useEffect(() => {
     // Show ingredient list with animation when ingredients are added
@@ -176,30 +214,63 @@ export default function CustomMealBuilder({ onSaveMeal, onCancel }: Props) {
     }
   }, [selectedIngredients])
 
+  // Update the useEffect for controlling the add ingredient panel animation to increase the height
   useEffect(() => {
     // Control add ingredient panel animation
     if (isAddingIngredient) {
-      addIngredientHeight.value = withSpring(280, { damping: 20 })
-      searchOpacity.value = withTiming(0.5, { duration: 300 })
+      // Significantly increase the height values to accommodate the spoon visualization
+      addIngredientHeight.value = withSpring(measurableUnits.includes(unit) ? 500 : 320, { damping: 20 })
+      // Scroll to the add ingredient panel
+      setTimeout(() => {
+        scrollViewRef.current?.scrollTo({ y: 100, animated: true })
+      }, 100)
     } else {
       addIngredientHeight.value = withTiming(0, { duration: 300 })
-      searchOpacity.value = withTiming(1, { duration: 300 })
     }
-  }, [isAddingIngredient])
+  }, [isAddingIngredient, unit])
 
   useEffect(() => {
     // Control loading animation
     if (isSearching) {
       loadingOpacity.value = withTiming(1, { duration: 300 })
-      loadingRotation.value = withRepeat(
-        withTiming(360, { duration: 1000 }),
-        -1, // Infinite repeat
-        false,
+      loadingRotation.value = withTiming(
+        360,
+        {
+          duration: 1000,
+          easing: Easing.linear,
+        },
+        () => {
+          loadingRotation.value = 0
+          runOnJS(rotateLoading)()
+        },
       )
     } else {
       loadingOpacity.value = withTiming(0, { duration: 300 })
     }
   }, [isSearching])
+
+  const rotateLoading = () => {
+    if (isSearching) {
+      loadingRotation.value = withTiming(
+        360,
+        {
+          duration: 1000,
+          easing: Easing.linear,
+        },
+        () => {
+          loadingRotation.value = 0
+          runOnJS(rotateLoading)()
+        },
+      )
+    }
+  }
+
+  // Reset fullness when unit changes
+  useEffect(() => {
+    if (measurableUnits.includes(unit)) {
+      setFullness("standard")
+    }
+  }, [unit])
 
   // Debounced search
   useEffect(() => {
@@ -209,110 +280,37 @@ export default function CustomMealBuilder({ onSaveMeal, onCancel }: Props) {
     }
 
     const timer = setTimeout(() => {
-      searchOpenFoodFacts(searchQuery)
+      searchBackendFoodItems(searchQuery)
     }, 500)
 
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-  // Search Open Food Facts API
-  const searchOpenFoodFacts = async (query: string) => {
+  const searchBackendFoodItems = async (query: string) => {
     if (!query.trim() || query.length < 2) return
 
     setIsSearching(true)
     try {
-      const response = await fetch(
-        `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(
-          query,
-        )}&search_simple=1&action=process&json=1&page_size=10`,
-      )
-      const data = await response.json()
+      const res = await fetch(`${API_URL}/search-food?q=${encodeURIComponent(query)}`)
+      const data = await res.json()
 
-      if (data.products) {
-        const formattedResults = data.products.map((product: any) => {
-          // Extract serving size information
-          let servingQuantity: number | undefined = undefined
-          let actualQuantity: number | undefined = undefined
-          let actualUnit: string | undefined = undefined
+      const results: AutocompleteItem[] = data.map((item: any) => ({
+        id: item.id.toString(),
+        name: item.name,
+        brand: item.brand || "כללי",
+        actual_quantity: 100,
+        actual_unit: "גרם",
+        nutrition: {
+          calories: Number(item.calories_per_100g) || 0,
+          protein_g: Number(item.protein_g) || 0,
+          carbs_g: Number(item.carbs_g) || 0,
+          fat_g: Number(item.fat_g) || 0,
+        },
+      }))
 
-          // Try to get serving quantity directly if available
-          if (product.serving_quantity) {
-            servingQuantity = Number.parseFloat(product.serving_quantity)
-          }
-          // Otherwise try to parse it from serving_size string
-          else if (product.serving_size) {
-            // Try to extract numeric value from serving_size (e.g., "80 g" -> 80)
-            const match = product.serving_size.match(/(\d+(\.\d+)?)/)
-            if (match) {
-              servingQuantity = Number.parseFloat(match[0])
-            }
-          }
-
-          // Extract actual quantity from the quantity field
-          if (product.quantity) {
-            // Parse quantity like "70 ג" (Hebrew), "93 g" (English), or "1 Liter"
-            const quantityMatch = product.quantity.match(/(\d+(\.\d+)?)/)
-            if (quantityMatch) {
-              actualQuantity = Number.parseFloat(quantityMatch[0])
-
-              // Try to determine the unit
-              const quantityLower = product.quantity.toLowerCase()
-              if (product.quantity.includes("ג") || quantityLower.includes(" g")) {
-                actualUnit = "גרם" // Hebrew for gram
-              } else if (
-                product.quantity.includes('מ"ל') ||
-                product.quantity.includes("מל") ||
-                quantityLower.includes(" ml")
-              ) {
-                actualUnit = 'מ"ל' // Hebrew for ml
-              } else if (quantityLower.includes(" kg")) {
-                actualQuantity = actualQuantity * 1000 // Convert kg to g
-                actualUnit = "גרם"
-              } else if (quantityLower.includes(" oz")) {
-                actualQuantity = actualQuantity * 28.35 // Convert oz to g (approximate)
-                actualUnit = "גרם"
-              } else if (
-                quantityLower.includes(" l") ||
-                quantityLower.includes(" liter") ||
-                quantityLower.includes(" litre") ||
-                quantityLower.includes("ליטר")
-              ) {
-                // Handle liter format
-                if (quantityLower.includes(" cl")) {
-                  actualQuantity = actualQuantity * 10 // Convert cl to ml
-                  actualUnit = 'מ"ל'
-                } else if (quantityLower.includes(" dl")) {
-                  actualQuantity = actualQuantity * 100 // Convert dl to ml
-                  actualUnit = 'מ"ל'
-                } else {
-                  actualQuantity = actualQuantity * 1000 // Convert l to ml
-                  actualUnit = "ליטר"
-                }
-              }
-            }
-          }
-
-          return {
-            id: product.code || `temp-${Math.random().toString(36).substring(7)}`,
-            name: product.product_name || "Unknown Product",
-            brand: product.brands,
-            image: product.image_url,
-            serving_size: product.serving_size,
-            serving_quantity: servingQuantity,
-            actual_quantity: actualQuantity,
-            actual_unit: actualUnit,
-            nutrition: {
-              calories: product.nutriments["energy-kcal_100g"] || 0,
-              protein_g: product.nutriments.proteins_100g || 0,
-              carbs_g: product.nutriments.carbohydrates_100g || 0,
-              fat_g: product.nutriments.fat_100g || 0,
-            },
-          }
-        })
-        setSearchResults(formattedResults)
-      }
-    } catch (error) {
-      console.error("Error searching Open Food Facts:", error)
+      setSearchResults(results)
+    } catch (err) {
+      console.error("Error fetching from backend:", err)
     } finally {
       setIsSearching(false)
     }
@@ -360,7 +358,13 @@ export default function CustomMealBuilder({ onSaveMeal, onCancel }: Props) {
     }
 
     // Calculate nutrition based on quantity and unit
-    const conversionFactor = unitConversions[unit as keyof typeof unitConversions] || 1
+    let conversionFactor = unitConversions[unit as keyof typeof unitConversions] || 1
+
+    // If using a measurable unit, adjust the conversion factor based on fullness
+    if (measurableUnits.includes(unit)) {
+      conversionFactor = spoonProfiles[unit as keyof typeof spoonProfiles][fullness]
+    }
+
     const weightInGrams = quantityNum * conversionFactor
     const nutritionFactor = weightInGrams / 100 // Nutrition is per 100g
 
@@ -371,6 +375,7 @@ export default function CustomMealBuilder({ onSaveMeal, onCancel }: Props) {
       image: currentIngredient.image,
       quantity: quantityNum,
       unit,
+      fullness: measurableUnits.includes(unit) ? fullness : undefined,
       calories: Math.round(currentIngredient.nutrition.calories * nutritionFactor),
       protein_g: Number.parseFloat((currentIngredient.nutrition.protein_g * nutritionFactor).toFixed(1)),
       carbs_g: Number.parseFloat((currentIngredient.nutrition.carbs_g * nutritionFactor).toFixed(1)),
@@ -395,6 +400,11 @@ export default function CustomMealBuilder({ onSaveMeal, onCancel }: Props) {
     // Reset form
     setCurrentIngredient(null)
     setIsAddingIngredient(false)
+
+    // Focus back on search input
+    setTimeout(() => {
+      searchInputRef.current?.focus()
+    }, 300)
   }
 
   // Edit ingredient
@@ -412,6 +422,11 @@ export default function CustomMealBuilder({ onSaveMeal, onCancel }: Props) {
     })
     setQuantity(ingredient.quantity.toString())
     setUnit(ingredient.unit)
+    if (ingredient.fullness) {
+      setFullness(ingredient.fullness)
+    } else {
+      setFullness("standard")
+    }
     setIsAddingIngredient(true)
   }
 
@@ -453,18 +468,16 @@ export default function CustomMealBuilder({ onSaveMeal, onCancel }: Props) {
 
     try {
       setIsSaving(true)
-      console.log("Attempting to save meal:", JSON.stringify(meal))
 
       if (onSaveMeal) {
-        console.log("onSaveMeal prop exists, calling it now")
         await onSaveMeal(meal)
-        console.log("onSaveMeal completed successfully")
         Alert.alert("נשמר בהצלחה", "המנה נוספה בהצלחה")
         // Reset form
         setSelectedIngredients([])
         setMealName("")
+        // Close modal
+        onClose()
       } else {
-        console.error("onSaveMeal prop is not defined")
         Alert.alert("שגיאה", "לא ניתן לשמור את המנה - חסר מידע שמירה")
       }
     } catch (error) {
@@ -480,229 +493,407 @@ export default function CustomMealBuilder({ onSaveMeal, onCancel }: Props) {
     setCurrentIngredient(null)
     setIsAddingIngredient(false)
     setEditingIngredientId(null)
+
+    // Focus back on search input
+    setTimeout(() => {
+      searchInputRef.current?.focus()
+    }, 300)
   }
 
-  // Render autocomplete item
-  const renderAutocompleteItem = ({ item }: { item: AutocompleteItem }) => (
-    <TouchableOpacity style={styles.autocompleteItem} onPress={() => handleSelectIngredient(item)}>
-      {item.image && (
-        <View style={styles.autocompleteImageContainer}>
-          <Image source={{ uri: item.image }} style={styles.autocompleteImage} resizeMode="cover" />
+  // Handle unit change
+  const handleUnitChange = (newUnit: string) => {
+    setUnit(newUnit)
+    // Reset fullness to standard when changing to a measurable unit
+    if (measurableUnits.includes(newUnit)) {
+      setFullness("standard")
+    }
+  }
+
+  // Update the renderFullnessSelector function to improve the layout
+  const renderFullnessSelector = () => {
+    if (!measurableUnits.includes(unit)) return null
+
+    return (
+      <View style={styles.fullnessSection}>
+        <Text style={styles.fullnessLabel}>מידת מילוי:</Text>
+
+        {/* Add the spoon visualization with proper spacing */}
+        <View style={styles.spoonVisualizationContainer}>
+          <SpoonVisualization fullness={fullness} unit={unit} onFullnessChange={setFullness} />
         </View>
-      )}
-      <View style={styles.autocompleteContent}>
-        <Text style={styles.autocompleteName}>{item.name}</Text>
-        {item.brand && <Text style={styles.autocompleteBrand}>{item.brand}</Text>}
-        {item.actual_quantity ? (
-          <Text style={styles.autocompleteServing}>
-            כמות: {item.actual_quantity} {item.actual_unit || "גרם"}
-          </Text>
-        ) : item.serving_size ? (
-          <Text style={styles.autocompleteServing}>מנה: {item.serving_size}</Text>
-        ) : null}
       </View>
-      <Ionicons name="add-circle" size={24} color="#66bb6a" />
-    </TouchableOpacity>
-  )
+    )
+  }
 
-  // Render ingredient item
-  const renderIngredientItem = ({ item }: { item: Ingredient }) => (
-    <View style={styles.ingredientItem}>
-      <View style={styles.ingredientInfo}>
-        <Text style={styles.ingredientName}>{item.name}</Text>
-        <Text style={styles.ingredientQuantity}>
-          {item.quantity} {item.unit}
-        </Text>
-        <Text style={styles.ingredientCalories}>{item.calories} קלוריות</Text>
-      </View>
-      <View style={styles.ingredientActions}>
-        <TouchableOpacity style={styles.editButton} onPress={() => handleEditIngredient(item.id)}>
-          <Ionicons name="pencil" size={18} color="#0ea5e9" />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteIngredient(item.id)}>
-          <Ionicons name="trash" size={18} color="#ef4444" />
-        </TouchableOpacity>
-      </View>
-    </View>
-  )
+  // Helper function to get fullness text
+  const getFullnessText = (fullness: "flat" | "standard" | "heaped") => {
+    switch (fullness) {
+      case "flat":
+        return "(שטוח)"
+      case "standard":
+        return "(רגיל)"
+      case "heaped":
+        return "(גדוש)"
+      default:
+        return ""
+    }
+  }
 
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      <View style={styles.header}>
-        <Text style={styles.title}>הכנת מנה מותאמת אישית</Text>
-        <TouchableOpacity style={styles.closeButton} onPress={onCancel}>
-          <Ionicons name="close" size={24} color="#666" />
-        </TouchableOpacity>
-      </View>
-      {/* Add this right after the header in the return statement */}
-      <View style={{ padding: 10, backgroundColor: "#66bb6a", marginBottom: 10, borderRadius: 8 }}>
-        <Text style={{ color: "white", textAlign: "center", fontWeight: "bold" }}>בונה מנה מותאמת אישית</Text>
-      </View>
+  // Render the component content
+  const renderContent = () => (
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.keyboardAvoidingView}>
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.header}>
+          <Text style={styles.title}>הכנת מנה מותאמת אישית</Text>
+          <TouchableOpacity
+            style={styles.closeButton}
+            onPress={onClose}
+            accessibilityLabel="סגור"
+            accessibilityRole="button"
+          >
+            <Ionicons name="close" size={24} color="#666" />
+          </TouchableOpacity>
+        </View>
 
-      {/* Search Section */}
-      <Animated.View style={[styles.searchSection, searchAnimatedStyle]}>
-        <View style={styles.searchInputContainer}>
-          <Ionicons name="search" size={20} color="#666" style={styles.searchIcon} />
-          <TextInput
-            ref={searchInputRef}
-            style={styles.searchInput}
-            placeholder="חפש מרכיב..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            editable={!isAddingIngredient}
-          />
-          {isSearching && (
-            <Animated.View style={[styles.loadingIndicator, loadingAnimatedStyle]}>
-              <ActivityIndicator size="small" color="#66bb6a" />
+        <ScrollView
+          ref={scrollViewRef}
+          style={styles.contentContainer}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={true}
+        >
+          {/* Search Section */}
+          <View style={styles.searchSection}>
+            <View style={styles.searchInputContainer}>
+              <Ionicons name="search" size={20} color="#666" style={styles.searchIcon} />
+              <TextInput
+                ref={searchInputRef}
+                style={styles.searchInput}
+                placeholder="חפש מרכיב מהמאגר שלך..."
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                editable={!isAddingIngredient}
+                accessibilityLabel="חיפוש מרכיבים"
+                accessibilityHint="הקלד לחיפוש מרכיבים מהמאגר"
+              />
+              {isSearching && (
+                <Animated.View style={[styles.loadingIndicator, loadingAnimatedStyle]}>
+                  <ActivityIndicator size="small" color="#66bb6a" />
+                </Animated.View>
+              )}
+            </View>
+
+            {/* Search Results */}
+            {searchResults.length > 0 && !isAddingIngredient && (
+              <View style={styles.autocompleteContainer}>
+                <ScrollView
+                  style={styles.autocompleteList}
+                  keyboardShouldPersistTaps="handled"
+                  nestedScrollEnabled={true}
+                >
+                  {searchResults.map((item) => (
+                    <View key={item.id}>{renderAutocompleteItem({ item })}</View>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+          </View>
+
+          {/* Add Ingredient Panel */}
+          <Animated.View style={[styles.addIngredientPanel, addIngredientAnimatedStyle]}>
+            {currentIngredient && (
+              <>
+                <View style={styles.selectedIngredientHeader}>
+                  <Text style={styles.selectedIngredientTitle}>
+                    {editingIngredientId ? "עריכת מרכיב" : "הוספת מרכיב"}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.cancelButton}
+                    onPress={handleCancelAddIngredient}
+                    accessibilityLabel="ביטול"
+                  >
+                    <Ionicons name="close-circle" size={20} color="#666" />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.selectedIngredientInfo}>
+                  <Text style={styles.selectedIngredientName}>{currentIngredient.name}</Text>
+                  {currentIngredient.brand && (
+                    <Text style={styles.selectedIngredientBrand}>{currentIngredient.brand}</Text>
+                  )}
+                </View>
+
+                <View style={styles.quantitySection}>
+                  <Text style={styles.quantityLabel}>כמות:</Text>
+                  <View style={styles.quantityInputContainer}>
+                    <TextInput
+                      ref={quantityInputRef}
+                      style={styles.quantityInput}
+                      value={quantity}
+                      onChangeText={setQuantity}
+                      keyboardType="numeric"
+                      selectTextOnFocus
+                      accessibilityLabel="כמות"
+                      accessibilityHint="הכנס כמות מספרית"
+                    />
+                    <View style={styles.unitSelector}>
+                      {Object.keys(unitConversions).map((unitOption) => (
+                        <TouchableOpacity
+                          key={unitOption}
+                          style={[styles.unitOption, unit === unitOption && styles.unitOptionSelected]}
+                          onPress={() => handleUnitChange(unitOption)}
+                          accessibilityLabel={`יחידת מידה ${unitOption}`}
+                          accessibilityRole="radio"
+                          accessibilityState={{ checked: unit === unitOption }}
+                        >
+                          <Text style={[styles.unitOptionText, unit === unitOption && styles.unitOptionTextSelected]}>
+                            {unitOption}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                </View>
+
+                {/* Fullness Selector */}
+                {renderFullnessSelector()}
+
+                <TouchableOpacity
+                  style={styles.addButton}
+                  onPress={handleAddIngredient}
+                  accessibilityLabel={editingIngredientId ? "עדכן מרכיב" : "הוסף מרכיב"}
+                  accessibilityRole="button"
+                  disabled={!currentIngredient || !currentIngredient.nutrition}
+                >
+                  <Text style={styles.addButtonText}>{editingIngredientId ? "עדכן מרכיב" : "הוסף מרכיב"}</Text>
+                  <Ionicons name={editingIngredientId ? "checkmark" : "add"} size={20} color="#fff" />
+                </TouchableOpacity>
+              </>
+            )}
+          </Animated.View>
+
+          {/* Ingredients List */}
+          <Animated.View style={[styles.ingredientsListSection, ingredientListAnimatedStyle]}>
+            <Text style={styles.sectionTitle}>מרכיבים ({selectedIngredients.length})</Text>
+            {selectedIngredients.length > 0 ? (
+              <View style={styles.ingredientsList}>
+                {selectedIngredients.map((item) => (
+                  <View key={item.id}>{renderIngredientItem({ item })}</View>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.emptyListText}>לא נבחרו מרכיבים</Text>
+            )}
+          </Animated.View>
+
+          {/* Nutrition Summary */}
+          {selectedIngredients.length > 0 && (
+            <Animated.View style={[styles.nutritionSection, nutritionAnimatedStyle]}>
+              <Text style={styles.sectionTitle}>סיכום תזונתי</Text>
+              <View style={styles.nutritionChart}>
+                <PlateChart
+                  carbs={totalNutrition.carbs_g}
+                  protein={totalNutrition.protein_g}
+                  fat={totalNutrition.fat_g}
+                  totalCalories={totalNutrition.calories}
+                />
+              </View>
             </Animated.View>
           )}
-        </View>
 
-        {/* Search Results */}
-        {searchResults.length > 0 && !isAddingIngredient && (
-          <View style={styles.autocompleteContainer}>
-            <ScrollView style={styles.autocompleteList} keyboardShouldPersistTaps="handled" nestedScrollEnabled={true}>
-              {searchResults.map((item) => (
-                <View key={item.id}>{renderAutocompleteItem({ item })}</View>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-      </Animated.View>
-
-      {/* Add Ingredient Panel */}
-      <Animated.View style={[styles.addIngredientPanel, addIngredientAnimatedStyle]}>
-        {currentIngredient && (
-          <>
-            <View style={styles.selectedIngredientHeader}>
-              <Text style={styles.selectedIngredientTitle}>הוספת מרכיב</Text>
-              <TouchableOpacity style={styles.cancelButton} onPress={handleCancelAddIngredient}>
-                <Ionicons name="close-circle" size={20} color="#666" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.selectedIngredientInfo}>
-              <Text style={styles.selectedIngredientName}>{currentIngredient.name}</Text>
-              {currentIngredient.brand && <Text style={styles.selectedIngredientBrand}>{currentIngredient.brand}</Text>}
-            </View>
-
-            <View style={styles.quantitySection}>
-              <Text style={styles.quantityLabel}>כמות:</Text>
-              <View style={styles.quantityInputContainer}>
+          {/* Confirmation Section */}
+          {selectedIngredients.length > 0 && (
+            <Animated.View style={[styles.confirmSection, confirmAnimatedStyle]}>
+              <View style={styles.mealNameContainer}>
+                <Text style={styles.mealNameLabel}>שם המנה:</Text>
                 <TextInput
-                  ref={quantityInputRef}
-                  style={styles.quantityInput}
-                  value={quantity}
-                  onChangeText={setQuantity}
-                  keyboardType="numeric"
-                  selectTextOnFocus
+                  ref={mealNameInputRef}
+                  style={styles.mealNameInput}
+                  value={mealName}
+                  onChangeText={setMealName}
+                  placeholder="הכנס שם למנה..."
+                  accessibilityLabel="שם המנה"
+                  accessibilityHint="הכנס שם למנה המותאמת אישית"
                 />
-                <View style={styles.unitSelector}>
-                  {Object.keys(unitConversions).map((unitOption) => (
-                    <TouchableOpacity
-                      key={unitOption}
-                      style={[styles.unitOption, unit === unitOption && styles.unitOptionSelected]}
-                      onPress={() => setUnit(unitOption)}
-                    >
-                      <Text style={[styles.unitOptionText, unit === unitOption && styles.unitOptionTextSelected]}>
-                        {unitOption}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.saveButton, isSaving && styles.disabledButton]}
+                onPress={handleSaveMeal}
+                disabled={isSaving}
+                accessibilityLabel="שמור מנה"
+                accessibilityRole="button"
+                accessibilityState={{ disabled: isSaving }}
+              >
+                <Text style={styles.saveButtonText}>{isSaving ? "שומר..." : "שמור מנה"}</Text>
+                <Ionicons name="save-outline" size={20} color="#fff" />
+              </TouchableOpacity>
+            </Animated.View>
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    </KeyboardAvoidingView>
+  )
+
+  // If used as a standalone modal
+  if (asModal) {
+    return (
+      <Modal visible={visible} transparent={true} animationType="slide" onRequestClose={onClose}>
+        <View style={styles.modalOverlay}>
+          <Pressable style={styles.dismissArea} onPress={onClose} />
+          <View style={styles.modalContainer}>{renderContent()}</View>
+        </View>
+      </Modal>
+    )
+  }
+
+  // If embedded in another component/modal
+  return <View style={styles.container}>{renderContent()}</View>
+
+  function renderAutocompleteItem({ item }: { item: AutocompleteItem }) {
+    return (
+      <TouchableOpacity
+        style={styles.autocompleteItem}
+        onPress={() => handleSelectIngredient(item)}
+        accessibilityLabel={`בחר ${item.name} ${item.brand ? `(${item.brand})` : ""}`}
+      >
+        <View style={styles.autocompleteContent}>
+          <Text style={styles.autocompleteName}>{item.name}</Text>
+          {item.brand && <Text style={styles.autocompleteBrand}>{item.brand}</Text>}
+          {item.serving_size && item.serving_quantity && (
+            <Text style={styles.autocompleteServing}>
+              {item.serving_quantity} {item.serving_size}
+            </Text>
+          )}
+          {item.nutrition && (
+            <View style={styles.macroIndicators}>
+              <View style={styles.macroItem}>
+                <Text style={[styles.macroValue, styles.proteinColor]}>{item.nutrition.protein_g}g</Text>
+                <Text style={styles.proteinColor}>חלבון</Text>
+              </View>
+              <View style={styles.macroItem}>
+                <Text style={[styles.macroValue, styles.fatColor]}>{item.nutrition.fat_g}g</Text>
+                <Text style={styles.fatColor}>שומן</Text>
+              </View>
+              <View style={styles.macroItem}>
+                <Text style={[styles.macroValue, styles.carbColor]}>{item.nutrition.carbs_g}g</Text>
+                <Text style={styles.carbColor}>פחמימה</Text>
               </View>
             </View>
-
-            <TouchableOpacity style={styles.addButton} onPress={handleAddIngredient}>
-              <Text style={styles.addButtonText}>{editingIngredientId ? "עדכן מרכיב" : "הוסף מרכיב"}</Text>
-              <Ionicons name={editingIngredientId ? "checkmark" : "add"} size={20} color="#fff" />
-            </TouchableOpacity>
-          </>
-        )}
-      </Animated.View>
-
-      {/* Ingredients List */}
-      <Animated.View style={[styles.ingredientsListSection, ingredientListAnimatedStyle]}>
-        <Text style={styles.sectionTitle}>מרכיבים ({selectedIngredients.length})</Text>
-        {selectedIngredients.length > 0 ? (
-          <View style={styles.ingredientsList}>
-            {selectedIngredients.map((item) => (
-              <View key={item.id}>{renderIngredientItem({ item })}</View>
-            ))}
+          )}
+        </View>
+        {item.image ? (
+          <View style={styles.autocompleteImageContainer}>
+            <Image source={{ uri: item.image }} style={styles.autocompleteImage} />
           </View>
-        ) : (
-          <Text style={styles.emptyListText}>לא נבחרו מרכיבים</Text>
-        )}
-      </Animated.View>
+        ) : null}
+      </TouchableOpacity>
+    )
+  }
 
-      {/* Nutrition Summary */}
-      {selectedIngredients.length > 0 && (
-        <Animated.View style={[styles.nutritionSection, nutritionAnimatedStyle]}>
-          <Text style={styles.sectionTitle}>סיכום תזונתי</Text>
-          <View style={styles.nutritionChart}>
-            <PlateChart
-              carbs={totalNutrition.carbs_g}
-              protein={totalNutrition.protein_g}
-              fat={totalNutrition.fat_g}
-              totalCalories={totalNutrition.calories}
-            />
-          </View>
-        </Animated.View>
-      )}
-
-      {/* Confirmation Section */}
-      {selectedIngredients.length > 0 && (
-        <Animated.View style={[styles.confirmSection, confirmAnimatedStyle]}>
-          <View style={styles.mealNameContainer}>
-            <Text style={styles.mealNameLabel}>שם המנה:</Text>
-            <TextInput
-              ref={mealNameInputRef}
-              style={styles.mealNameInput}
-              value={mealName}
-              onChangeText={setMealName}
-              placeholder="הכנס שם למנה..."
-            />
-          </View>
-
+  function renderIngredientItem({ item }: { item: Ingredient }) {
+    return (
+      <View style={styles.ingredientItem}>
+        <View style={styles.ingredientInfo}>
+          <Text style={styles.ingredientName}>{item.name}</Text>
+          <Text style={styles.ingredientQuantity}>
+            {item.quantity} {item.unit} {item.fullness ? getFullnessText(item.fullness) : ""}
+          </Text>
+        </View>
+        <Text style={styles.ingredientCalories}>{item.calories} קלוריות</Text>
+        <View style={styles.ingredientActions}>
           <TouchableOpacity
-            style={[styles.saveButton, isSaving && styles.disabledButton]}
-            onPress={handleSaveMeal}
-            disabled={isSaving}
+            style={styles.editButton}
+            onPress={() => handleEditIngredient(item.id)}
+            accessibilityLabel={`ערוך ${item.name}`}
           >
-            <Text style={styles.saveButtonText}>{isSaving ? "שומר..." : "שמור מנה"}</Text>
-            <Ionicons name="save-outline" size={20} color="#fff" />
+            <Ionicons name="create-outline" size={20} color="#64748b" />
           </TouchableOpacity>
-        </Animated.View>
-      )}
-    </ScrollView>
-  )
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={() => handleDeleteIngredient(item.id)}
+            accessibilityLabel={`מחק ${item.name}`}
+          >
+            <Ionicons name="trash-outline" size={20} color="#ef4444" />
+          </TouchableOpacity>
+        </View>
+      </View>
+    )
+  }
 }
 
-const { width } = Dimensions.get("window")
+const { width, height } = Dimensions.get("window")
+const isIOS = Platform.OS === "ios"
+
+// Add this to the styles object
 const styles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  dismissArea: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  modalContainer: {
+    width: width > 500 ? 500 : width * 0.9,
+    maxHeight: height * 0.9,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    overflow: "hidden",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+      },
+      android: {
+        elevation: 5,
+      },
+    }),
+  },
   container: {
     flex: 1,
-    backgroundColor: "#f8fafc",
-    width: "100%", // Ensure full width
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    overflow: "hidden",
   },
-  contentContainer: {
-    padding: 16,
-    paddingBottom: 100,
+  keyboardAvoidingView: {
+    flex: 1,
+  },
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#fff",
   },
   header: {
-    flexDirection: "row",
+    flexDirection: "row-reverse",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+    backgroundColor: "#f8fafc",
   },
   title: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "700",
     color: "#334155",
-    textAlign: "right",
   },
   closeButton: {
     padding: 4,
+  },
+  contentContainer: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 32,
   },
   searchSection: {
     marginBottom: 16,
@@ -736,7 +927,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     borderWidth: 1,
     borderColor: "#e2e8f0",
-    maxHeight: 200,
+    maxHeight: 300,
   },
   autocompleteList: {
     padding: 8,
@@ -769,10 +960,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 12,
     padding: 16,
+    paddingBottom: 24, // Add extra padding at the bottom
     marginBottom: 16,
     borderWidth: 1,
     borderColor: "#e2e8f0",
-    // overflow: "hidden",
   },
   selectedIngredientHeader: {
     flexDirection: "row",
@@ -855,6 +1046,48 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "500",
   },
+  fullnessSection: {
+    marginBottom: 24, // Increase bottom margin to create more space
+  },
+  fullnessLabel: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#334155",
+    marginBottom: 8,
+    textAlign: "right",
+  },
+  fullnessOptions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    backgroundColor: "#f8fafc",
+    borderRadius: 12,
+    padding: 4,
+  },
+  fullnessOption: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    marginHorizontal: 2,
+  },
+  fullnessOptionSelected: {
+    backgroundColor: "#0ea5e9",
+  },
+  fullnessIcon: {
+    marginRight: 4,
+  },
+  fullnessText: {
+    fontSize: 14,
+    color: "#64748b",
+    textAlign: "center",
+  },
+  fullnessTextSelected: {
+    color: "#fff",
+    fontWeight: "500",
+  },
   addButton: {
     backgroundColor: "#66bb6a",
     borderRadius: 12,
@@ -862,7 +1095,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 8,
+    marginTop: 24, // Increase top margin
+    marginBottom: 16, // Increase bottom margin
+    zIndex: 10, // Ensure button is above other elements
   },
   addButtonText: {
     fontSize: 16,
@@ -887,7 +1122,7 @@ const styles = StyleSheet.create({
     borderColor: "#e2e8f0",
   },
   ingredientItem: {
-    flexDirection: "row",
+    flexDirection: "row-reverse",
     justifyContent: "space-between",
     alignItems: "center",
     paddingVertical: 12,
@@ -914,9 +1149,10 @@ const styles = StyleSheet.create({
     color: "#0ea5e9",
     fontWeight: "500",
     textAlign: "right",
+    paddingLeft: 30,
   },
   ingredientActions: {
-    flexDirection: "row",
+    flexDirection: "row-reverse",
     alignItems: "center",
   },
   editButton: {
@@ -924,7 +1160,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   deleteButton: {
-    padding: 8,
+    // padding: 8,
   },
   emptyListText: {
     textAlign: "center",
@@ -1000,5 +1236,37 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#0ea5e9",
     textAlign: "right",
+  },
+  macroIndicators: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  macroItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: 12,
+  },
+  macroValue: {
+    fontSize: 13,
+    fontWeight: "500",
+    marginRight: 4,
+  },
+  proteinColor: {
+    color: "#0891b2", // Cyan-600
+  },
+  fatColor: {
+    color: "#f59e0b", // Amber-500
+  },
+  carbColor: {
+    color: "#65a30d", // Lime-600
+  },
+  spoonVisualizationContainer: {
+    marginTop: 10,
+    marginBottom: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    height: 80, // Reduced height since we're only showing the buttons now
   },
 })

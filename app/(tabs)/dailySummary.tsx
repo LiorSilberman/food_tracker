@@ -12,9 +12,9 @@ import {
   Alert,
   Modal,
   TextInput,
+  ActivityIndicator,
 } from "react-native"
 import { auth } from "../../firebase"
-import { getFirestore, collection, query, where, Timestamp, onSnapshot } from "firebase/firestore"
 import { useRouter } from "expo-router"
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons"
 import { AnimatedCircularProgress } from "react-native-circular-progress"
@@ -23,10 +23,12 @@ import ConfettiCannon from "react-native-confetti-cannon"
 import { useIsFocused } from "@react-navigation/native"
 import { useUserStore } from "../../stores/userStore"
 import { LinearGradient } from "expo-linear-gradient"
-import { deleteMealFromFirestore, updateMealInFirestore } from "@/services/mealService"
+import { deleteMealFromFirestoreAndSQLite, updateMealInFirestoreAndSQLite } from "@/services/mealService"
+import { fetchTodayMealsFromSQLite } from "@/services/sqliteService"
+import { Meal } from "@/types/mealTypes"
+import { useMealRefreshStore } from "@/stores/useMealRefreshStore"
 
 const { width, height } = Dimensions.get("window")
-const db = getFirestore()
 
 // Helper function to determine meal type based on time
 const getMealType = (date: Date) => {
@@ -45,6 +47,7 @@ const formatTime = (date: Date) => {
 
 export default function DailySummaryScreen() {
   const [meals, setMeals] = useState<any[]>([])
+  const { refreshKey } = useMealRefreshStore()
   const [consumed, setConsumed] = useState(0)
   const [consumedProtein, setConsumedProtein] = useState(0)
   const [consumedCarbs, setConsumedCarbs] = useState(0)
@@ -57,7 +60,7 @@ export default function DailySummaryScreen() {
   const isFocused = useIsFocused()
   const [animateValue, setAnimateValue] = useState(0)
   const [showAnimation, setShowAnimation] = useState(false)
-
+  const [isDeleting, setIsDeleting] = useState(false)
   // Edit modal state
   const [editModalVisible, setEditModalVisible] = useState(false)
   const [currentEditMeal, setCurrentEditMeal] = useState<any>(null)
@@ -68,61 +71,48 @@ export default function DailySummaryScreen() {
     fat_g: "",
   })
 
-  useEffect(() => {
+  const fetchMeals = async () => {
     const user = auth.currentUser
     if (!user) return
 
-    const todayStart = new Date()
-    todayStart.setHours(0, 0, 0, 0)
-    const todayEnd = new Date()
-    todayEnd.setHours(23, 59, 59, 999)
+    try {
+      const mealsFromDB = (await fetchTodayMealsFromSQLite(user.uid)) as Meal[]
 
-    const mealsRef = collection(db, "users", user.uid, "meals")
-    const q = query(
-      mealsRef,
-      where("timestamp", ">=", Timestamp.fromDate(todayStart)),
-      where("timestamp", "<=", Timestamp.fromDate(todayEnd)),
-    )
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
       let total = 0
       let protein = 0
       let carbs = 0
       let fats = 0
-      const mealsList: any[] = []
 
-      snapshot.forEach((doc) => {
-        const data = doc.data()
-        total += data.calories || 0
-        protein += data.protein_g || 0
-        carbs += data.carbs_g || 0
-        fats += data.fat_g || 0
-        mealsList.push({
-          ...data,
-          id: doc.id,
-        })
+      mealsFromDB.forEach((meal) => {
+        total += meal.calories || 0
+        protein += meal.protein_g || 0
+        carbs += meal.carbs_g || 0
+        fats += meal.fat_g || 0
       })
 
-      // Sort meals by timestamp
-      mealsList.sort((a, b) => a.timestamp.toDate() - b.timestamp.toDate())
+      mealsFromDB.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
 
-      setPercentCalories((total / dailyCalories) * 100)
-      setMeals(mealsList)
+      setMeals(mealsFromDB)
       setConsumed(total)
       setConsumedProtein(protein)
       setConsumedCarbs(carbs)
       setConsumedFats(fats)
+      setPercentCalories((total / dailyCalories) * 100)
 
-      // Start animation after data is loaded
       setTimeout(() => {
         setShowAnimation(true)
         setAnimateValue(total)
       }, 500)
-    })
-
-    // Cleanup on unmount
-    return () => unsubscribe()
-  }, [dailyCalories])
+    } catch (err) {
+      console.error("❌ Error fetching meals from SQLite:", err)
+      Alert.alert("שגיאה", "שגיאה בטעינת הארוחות מהדאטהבייס המקומי")
+    }
+  }
+  useEffect(() => {
+    if (isFocused) {
+      fetchMeals()
+    }
+  }, [dailyCalories, isFocused])
 
   useEffect(() => {
     if (percentCalories >= 100 && !showConfetti && isFocused) {
@@ -172,9 +162,10 @@ export default function DailySummaryScreen() {
         fat_g: Number(editValues.fat_g),
       }
 
-      await updateMealInFirestore(currentEditMeal.id, updatedMealData)
+      await updateMealInFirestoreAndSQLite(currentEditMeal.id, updatedMealData)
       setEditModalVisible(false)
       setCurrentEditMeal(null)
+      await fetchMeals()
     } catch (error) {
       console.error("Error updating meal:", error)
       Alert.alert("שגיאה", "אירעה שגיאה בעדכון הארוחה")
@@ -193,10 +184,14 @@ export default function DailySummaryScreen() {
         style: "destructive",
         onPress: async () => {
           try {
-            await deleteMealFromFirestore(meal.id)
+            setIsDeleting(true)
+            await deleteMealFromFirestoreAndSQLite(meal.id)
+            await fetchMeals()
           } catch (error) {
             console.error("Error deleting meal:", error)
             Alert.alert("שגיאה", "אירעה שגיאה במחיקת הארוחה")
+          } finally {
+            setIsDeleting(false)
           }
         },
       },
@@ -283,15 +278,19 @@ export default function DailySummaryScreen() {
             <Text style={styles.mealsTitle}>הארוחות שלי</Text>
             <View style={styles.mealsDivider} />
           </Animatable.View>
-
+          {isDeleting && (
+            <ActivityIndicator size="small" color="#ef4444" style={{ marginTop: 10 }} />
+          )}
           {meals.length === 0 ? (
             <Animatable.View animation="fadeIn" duration={800} delay={800} style={styles.emptyState}>
               <MaterialCommunityIcons name="food-off" size={60} color="#94a3b8" />
               <Text style={styles.emptyStateText}>עדיין לא נרשמו ארוחות היום</Text>
             </Animatable.View>
+
           ) : (
+
             meals.map((meal, idx) => {
-              const mealTime = meal.timestamp.toDate()
+              const mealTime = new Date(meal.timestamp)
               const { icon, label } = getMealType(mealTime)
 
               return (

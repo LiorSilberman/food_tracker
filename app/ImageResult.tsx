@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Image, TextInput, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import MealAnalysisCard from '../components/meal/MealAnalysisCard';
+import { API_URL } from '@/config';
 
 export default function ImageResultScreen() {
   const { imageUri, base64 } = useLocalSearchParams<{ imageUri: string; base64: string }>();
@@ -17,7 +18,7 @@ export default function ImageResultScreen() {
   const analyze = async () => {
     setLoading(true);
     try {
-      const response = await fetch('http://192.168.1.102:5000/analyze', {
+      const response = await fetch(`${API_URL}/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

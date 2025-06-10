@@ -108,7 +108,7 @@ export default function GenderAgeScreen() {
     }
   }
 
-  const confrimIOSDate = () => {
+  const confirmIOSDate = () => {
     setBirthDate(formatDate(date))
     toggleDatePicker()
   }
@@ -206,7 +206,7 @@ export default function GenderAgeScreen() {
                       <Text style={styles.cancelButtonText}>סגור</Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={styles.pickerButton} onPress={confrimIOSDate}>
+                    <TouchableOpacity style={styles.pickerButton} onPress={confirmIOSDate}>
                       <Text style={styles.pickerButtonText}>אשר</Text>
                     </TouchableOpacity>
                   </View>

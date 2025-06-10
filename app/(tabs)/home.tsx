@@ -13,6 +13,7 @@ import { useUserStore } from "../../stores/userStore"
 import MealAnalysisCard from "../../components/meal/MealAnalysisCard"
 import { useImageUploadStore } from "../../stores/imageUploadStore"
 import KeyboardAvoidingContainer from "@/components/ui/KeyboardAvoidingContainer"
+import { API_URL } from "@/config"
 import { useFonts } from "expo-font"
 import EditableNutritionResult from "../../components/meal/EditableNutritionResult"
 import { useOnboarding } from "../../context/OnboardingContext"
@@ -166,7 +167,7 @@ export default function LoggedInHome() {
 
   const recalculateWithEditedIngredients = async (updatedIngredients: any) => {
     try {
-      const res = await fetch("http://192.168.1.102:5000/recalculate", {
+      const res = await fetch(`${API_URL}/recalculate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -81,7 +81,7 @@ export default function WeightGoalScreen() {
       weeklyRate,
       targetWeight,
     }))
-    router.push("/onbording/welcomeComplete")
+    router.push("/onboarding/welcomeComplete")
   }
 
   const weightDisplayAnimatedStyle = useAnimatedStyle(() => ({ opacity: weightDisplayOpacity.value }))
@@ -99,7 +99,7 @@ export default function WeightGoalScreen() {
     >
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.container}>
-          <AnimatedBackButton onPress={() => router.replace("/onbording/goal")} />
+          <AnimatedBackButton onPress={() => router.replace("/onboarding/goal")} />
 
           <Animated.View entering={FadeIn.delay(100).duration(600)} style={styles.progressContainer}>
             <AnimatedProgressBar step={6} totalSteps={7} accentColor={isLoseWeight ? "#0ea5e9" : "#f97316"} />

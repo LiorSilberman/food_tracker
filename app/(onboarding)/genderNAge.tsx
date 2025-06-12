@@ -81,7 +81,7 @@ export default function GenderAgeScreen() {
       gender: selectedGender,
       age: Timestamp.fromDate(date),
     }))
-    router.push("/onbording/weightNHeight")
+    router.push("/onboarding/weightNHeight")
   }
 
   const toggleDatePicker = () => {

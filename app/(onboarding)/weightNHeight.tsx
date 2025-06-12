@@ -60,7 +60,7 @@ export default function WeightHeightScreen() {
       weight: combinedWeight,
       height: height,
     }))
-    router.push("/onbording/activityLevel")
+    router.push("/onboarding/activityLevel")
   }
 
   const scaleAnimatedStyle = useAnimatedStyle(() => {
@@ -85,7 +85,7 @@ export default function WeightHeightScreen() {
     <LinearGradient colors={["#f0f9ff", "#e0f2fe", "#bae6fd"]} style={styles.gradient}>
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.container}>
-          <AnimatedBackButton onPress={() => router.replace("/onbording/genderNAge")} />
+          <AnimatedBackButton onPress={() => router.replace("/onboarding/genderNAge")} />
 
           <Animated.View entering={FadeIn.delay(100).duration(600)} style={styles.progressContainer}>
             <AnimatedProgressBar step={2} totalSteps={7} accentColor="#0ea5e9" />

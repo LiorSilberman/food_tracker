@@ -57,7 +57,6 @@
     "react-native-confetti-cannon": "^1.5.2",
     "react-native-gesture-handler": "~2.24.0",
     "react-native-gifted-charts": "^1.4.59",
-    "react-native-iap": "^12.16.2",
     "react-native-keyboard-aware-scroll-view": "^0.9.5",
     "react-native-pie-chart": "^4.0.1",
     "react-native-reanimated": "~3.17.4",

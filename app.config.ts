@@ -47,7 +47,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         },
       ],
       'expo-localization',
-      'react-native-iap',
       'expo-barcode-scanner',
     ],
 

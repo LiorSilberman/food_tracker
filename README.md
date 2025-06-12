@@ -57,3 +57,16 @@ npm start
 
 If you later add native modules that are not included in Expo Go, you'll need a
 custom development build using EAS.
+
+## Testing and Linting
+
+Before running the project's tests or lint checks, make sure all dependencies
+are installed:
+
+```bash
+npm install
+```
+
+Both `npm test` and `npm run lint` rely on **Jest** and the **Expo CLI**. These
+tools are included with the project's dev dependencies, so installing them is
+required for the commands to work correctly.

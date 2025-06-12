@@ -170,7 +170,7 @@ export default function MuscleGoalScreen() {
       experienceLevel,
       targetWeight,
     }))
-    router.push("/onbording/welcomeComplete")
+    router.push("/onboarding/welcomeComplete")
   }
 
   const weightDisplayAnimatedStyle = useAnimatedStyle(() => {
@@ -192,7 +192,7 @@ export default function MuscleGoalScreen() {
     <LinearGradient colors={["#f0f9ff", "#e0f2fe", "#bae6fd"]} style={styles.gradient}>
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.container}>
-          <AnimatedBackButton onPress={() => router.replace("/onbording/goal")} />
+          <AnimatedBackButton onPress={() => router.replace("/onboarding/goal")} />
 
           <Animated.View entering={FadeIn.delay(100).duration(600)} style={styles.progressContainer}>
             <AnimatedProgressBar step={6} totalSteps={7} accentColor="#0ea5e9" />

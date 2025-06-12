@@ -79,11 +79,11 @@ export default function GoalScreen() {
 
     // Navigate based on goal
     if (selected === "build_muscle") {
-      router.push("/onbording/muscleGoal")
+      router.push("/onboarding/muscleGoal")
     } else if (selected === "maintain_weight") {
-      router.push("/onbording/welcomeComplete")
+      router.push("/onboarding/welcomeComplete")
     } else {
-      router.push("/onbording/weightGoal")
+      router.push("/onboarding/weightGoal")
     }
   }
 
@@ -97,7 +97,7 @@ export default function GoalScreen() {
     <LinearGradient colors={["#f0f9ff", "#e0f2fe", "#bae6fd"]} style={styles.gradient}>
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.container}>
-          <AnimatedBackButton onPress={() => router.replace("/onbording/activityType")} />
+          <AnimatedBackButton onPress={() => router.replace("/onboarding/activityType")} />
 
           <Animated.View entering={FadeIn.delay(100).duration(600)} style={styles.progressContainer}>
             <AnimatedProgressBar step={5} totalSteps={7} accentColor="#0ea5e9" />

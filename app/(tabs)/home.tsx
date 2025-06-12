@@ -115,32 +115,6 @@ export default function LoggedInHome() {
       return
     }
 
-    // Check if we have custom nutrition values in SQLite
-    const checkForCustomValues = async () => {
-      try {
-        const user = auth.currentUser
-        if (!user) return false
-
-        const customNutrition = await getCustomNutrition(user.uid)
-        if (customNutrition) {
-          console.log("Home: Using custom nutrition values from SQLite:", customNutrition)
-          setNutritionValues(
-            {
-              calories: customNutrition.calories,
-              protein: customNutrition.protein,
-              carbs: customNutrition.carbs,
-              fat: customNutrition.fat,
-            },
-            true,
-          )
-          return true
-        }
-        return false
-      } catch (err) {
-        console.error("Error checking for custom values in SQLite:", err)
-        return false
-      }
-    }
   }
 
   const getGreeting = () => {

@@ -46,3 +46,14 @@ This app allows users to:
 ├── babel.config.js
 ├── package.json
 ```
+
+## Running Locally
+
+This project now works in **Expo Go**. After installing dependencies, simply run:
+
+```bash
+npm start
+```
+
+If you later add native modules that are not included in Expo Go, you'll need a
+custom development build using EAS.

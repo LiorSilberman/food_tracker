@@ -10,11 +10,6 @@ export default function Index() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // ✅ Flip layout to RTL once on app start
-    // if (!I18nManager.isRTL) {
-    //   I18nManager.forceRTL(true);
-    // }
-
     // ✅ Listen to Firebase Auth State
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {

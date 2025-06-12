@@ -1,3 +1,5 @@
+"use client"
+
 // app/(tabs)/home.tsx
 import { useState, useEffect } from "react"
 import { View, Text, StyleSheet, Alert, TouchableOpacity, SafeAreaView, StatusBar, Platform } from "react-native"
@@ -8,7 +10,7 @@ import { Ionicons } from "@expo/vector-icons"
 import * as Animatable from "react-native-animatable"
 import CircularCaloriesProgress from "../../components/meal/CircularCaloriesProgress"
 import MacroNutrientsBar from "../../components/MacroNutrientsBar"
-import { useIsFocused } from "@react-navigation/native"
+import { useIsFocused } from "@react-navigation/core"
 import { useUserStore } from "../../stores/userStore"
 import MealAnalysisCard from "../../components/meal/MealAnalysisCard"
 import { useImageUploadStore } from "../../stores/imageUploadStore"
@@ -22,17 +24,19 @@ import { fetchTodayMealsFromSQLite } from "@/services/sqliteService"
 import { fetchOnboardingData } from "@/onboardingDB"
 import BarcodeAnalysisCard from "@/components/meal/BarcodeAnalysisCard"
 import { useBarcodeScanStore } from "@/stores/barcodeScanStore"
-
-// ← Shared nutrition helpers
+import { getCustomNutrition } from "@/services/nutritionService"
 import {
-  calculateDailyCalories,
-  calculateDailyMacros,
-} from "@/nutritionCalculator"
-import { Meal } from "@/types/mealTypes"
+  getDisplayPreferences,
+  type DisplayPreferences,
+  DEFAULT_DISPLAY_PREFERENCES,
+} from "@/services/displayPreferencesService"
+import type { Meal } from "@/types/mealTypes"
 
 export default function LoggedInHome() {
   const router = useRouter()
-  const [result, setResult] = useState<{ calories: number; carbs_g: number; protein_g: number; fat_g: number } | null>(null)
+  const [result, setResult] = useState<{ calories: number; carbs_g: number; protein_g: number; fat_g: number } | null>(
+    null,
+  )
   const scannedBarcodeMeal = useBarcodeScanStore((s) => s.scannedBarcodeMeal)
   const scannedIngredients = useBarcodeScanStore((s) => s.scannedIngredients)
   const clearScannedData = useBarcodeScanStore((s) => s.clearScannedData)
@@ -40,12 +44,12 @@ export default function LoggedInHome() {
   const [consumedCalories, setConsumedCalories] = useState(0)
   const [todayMeals, setTodayMeals] = useState<Meal[]>([])
   const [refreshTrigger, setRefreshTrigger] = useState(0)
-  const [userGender, setUserGender] = useState<string | null>(null)
   const [consumedProtein, setConsumedProtein] = useState(0)
   const [consumedCarbs, setConsumedCarbs] = useState(0)
   const [consumedFats, setConsumedFats] = useState(0)
-  const { setDailyCalories, dailyCalories } = useUserStore()
-  const [macros, setMacros] = useState({ proteinG: 0, fatG: 0, carbsG: 0 })
+  const [displayPreferences, setDisplayPreferences] = useState<DisplayPreferences>(DEFAULT_DISPLAY_PREFERENCES)
+  const { dailyCalories, dailyProtein, dailyCarbs, dailyFat, setNutritionValues, userGender, setUserGender } =
+    useUserStore()
   const isFocused = useIsFocused()
   const image = useImageUploadStore((s) => s.imageUri)
   const clearImage = useImageUploadStore((s) => s.clearImage)
@@ -55,64 +59,92 @@ export default function LoggedInHome() {
   // --- Redirect non‑auth users who try to analyze a meal ---
   useEffect(() => {
     if (!auth.currentUser && (image || scannedBarcodeMeal)) {
-      Alert.alert(
-        "דרוש מנוי",
-        "עליך לרכוש מנוי כדי להשתמש בניתוח הארוחות.",
-        [{ text: "לרכוש", onPress: () => router.push("/purchase") }]
-      )
+      Alert.alert("דרוש מנוי", "עליך לרכוש מנוי כדי להשתמש בניתוח הארוחות.", [
+        { text: "לרכוש", onPress: () => router.push("/(purchase)") },
+      ])
       clearImage()
       clearScannedData()
     }
   }, [image, scannedBarcodeMeal])
 
+  // Load display preferences
+  useEffect(() => {
+    const loadDisplayPreferences = async () => {
+      try {
+        const preferences = await getDisplayPreferences()
+        setDisplayPreferences(preferences)
+      } catch (error) {
+        console.error("Error loading display preferences:", error)
+      }
+    }
+
+    if (isFocused) {
+      loadDisplayPreferences()
+    }
+  }, [isFocused])
+
   const fetchUserData = async () => {
     try {
       const user = auth.currentUser
-      const userData = user
-        ? await fetchOnboardingData(user.uid)
-        : onboardingData
+      const userData = user ? await fetchOnboardingData(user.uid) : onboardingData
       if (userData) applyNutritionCalculations(userData)
     } catch (err) {
       console.error("Failed to fetch user data:", err)
     }
   }
 
+  // Update the applyNutritionCalculations function to respect manually edited values
   const applyNutritionCalculations = (userData: any) => {
-    // Normalize age parameter (Date-string or number)
-    let ageParam: number | Date = new Date()
-    if (typeof userData.age === "string") ageParam = new Date(userData.age)
-    else if (typeof userData.age === "number") ageParam = userData.age
-
-    // 1) Daily calories
-    const calories = calculateDailyCalories({
-      gender: userData.gender,
-      age: ageParam,
-      weight: userData.weight,
-      height: userData.height,
-      activityLevel: userData.activityLevel,
-      activityType: userData.activityType,
-      goal: userData.goal,
-      weeklyRate: userData.weeklyRate,
-      experienceLevel: userData.experienceLevel,
-      targetWeight: userData.targetWeight,
-    })
+    // Always set the gender regardless of other calculations
     setUserGender(userData.gender)
-    setDailyCalories(calories)
 
-    // 2) Daily macros
-    const { proteinG, fatG, carbsG } = calculateDailyMacros({
-      weight: userData.weight,
-      dailyCalories: calories,
-      activityLevel: userData.activityLevel,
-      activityType: userData.activityType,
-      goal: userData.goal,
-    })
-    setMacros({ proteinG, fatG, carbsG })
+    // Check if values have been manually edited
+    const manuallyEdited = useUserStore.getState().manuallyEdited
+
+    // If values have been manually edited, don't recalculate
+    if (manuallyEdited) {
+      console.log("Home: Using manually edited nutrition values")
+      // Log the current values from the store for debugging
+      const currentValues = {
+        calories: useUserStore.getState().dailyCalories,
+        protein: useUserStore.getState().dailyProtein,
+        carbs: useUserStore.getState().dailyCarbs,
+        fat: useUserStore.getState().dailyFat,
+      }
+      console.log("Current nutrition values in store:", currentValues)
+      return
+    }
+
+    // Check if we have custom nutrition values in SQLite
+    const checkForCustomValues = async () => {
+      try {
+        const user = auth.currentUser
+        if (!user) return false
+
+        const customNutrition = await getCustomNutrition(user.uid)
+        if (customNutrition) {
+          console.log("Home: Using custom nutrition values from SQLite:", customNutrition)
+          setNutritionValues(
+            {
+              calories: customNutrition.calories,
+              protein: customNutrition.protein,
+              carbs: customNutrition.carbs,
+              fat: customNutrition.fat,
+            },
+            true,
+          )
+          return true
+        }
+        return false
+      } catch (err) {
+        console.error("Error checking for custom values in SQLite:", err)
+        return false
+      }
+    }
   }
 
   const getGreeting = () => {
-    if (userGender === "male")
-      return "ברוך הבא! צלם או העלה תמונה של הארוחה שלך כדי לראות את הערכים התזונתיים שלה."
+    if (userGender === "male") return "ברוך הבא! צלם או העלה תמונה של הארוחה שלך כדי לראות את הערכים התזונתיים שלה."
     if (userGender === "female")
       return "ברוכה הבאה! צלמי או העלי תמונה של הארוחה שלך כדי לראות את הערכים התזונתיים שלה."
     return "ברוך/ה הבא/ה! צלם/י או העלה/י תמונה של הארוחה שלך כדי לראות את הערכים התזונתיים שלה."
@@ -123,7 +155,10 @@ export default function LoggedInHome() {
     if (!user) return
     try {
       const meals = (await fetchTodayMealsFromSQLite(user.uid)) as Meal[]
-      let cals = 0, prot = 0, carbs = 0, fats = 0
+      let cals = 0,
+        prot = 0,
+        carbs = 0,
+        fats = 0
       meals.forEach((m) => {
         cals += m.calories || 0
         prot += m.protein_g || 0
@@ -207,11 +242,7 @@ export default function LoggedInHome() {
     <LinearGradient colors={["#fbffff", "#dceaf8"]} style={styles.gradient}>
       <SafeAreaView style={styles.safeArea}>
         {/* Logout Button - Top Right */}
-        <TouchableOpacity 
-          style={styles.logoutButton} 
-          onPress={handleLogout}
-          activeOpacity={0.7}
-        >
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.7}>
           <Ionicons name="log-out-outline" size={24} color="#31333d" />
         </TouchableOpacity>
 
@@ -225,15 +256,28 @@ export default function LoggedInHome() {
             {getGreeting()}
           </Animatable.Text>
 
-          <CircularCaloriesProgress consumed={consumedCalories} total={dailyCalories} />
+          {/* Conditionally render nutrition components based on user preferences */}
+          {displayPreferences.showCaloriesCircle && (
+            <CircularCaloriesProgress consumed={consumedCalories} total={dailyCalories} />
+          )}
 
           <Animatable.View animation="fadeInUp" delay={300} style={styles.macroRow}>
-            <MacroNutrientsBar label="חלבון" consumed={consumedProtein} goal={macros.proteinG} color="#e95899" />
-            <MacroNutrientsBar label="שומנים" consumed={consumedFats} goal={macros.fatG} color="#fc9e7f" />
-            <MacroNutrientsBar label="פחמימות" consumed={consumedCarbs} goal={macros.carbsG} color="#32cbc6" />
+            {displayPreferences.showProteinBar && (
+              <MacroNutrientsBar label="חלבון" consumed={consumedProtein} goal={dailyProtein} color="#e95899" />
+            )}
+            {displayPreferences.showFatBar && (
+              <MacroNutrientsBar label="שומנים" consumed={consumedFats} goal={dailyFat} color="#fc9e7f" />
+            )}
+            {displayPreferences.showCarbsBar && (
+              <MacroNutrientsBar label="פחמימות" consumed={consumedCarbs} goal={dailyCarbs} color="#32cbc6" />
+            )}
           </Animatable.View>
 
-          <TouchableOpacity onPress={() => router.push("/dailySummary")} activeOpacity={0.9} style={styles.summaryButton}>
+          <TouchableOpacity
+            onPress={() => router.push("/dailySummary")}
+            activeOpacity={0.9}
+            style={styles.summaryButton}
+          >
             <Animatable.View animation="fadeInUp" delay={300} style={styles.summaryCard}>
               <View style={styles.summaryTextRow}>
                 <Text style={styles.summaryTitle}>סיכום יומי</Text>
@@ -253,7 +297,7 @@ export default function LoggedInHome() {
             >
               <TouchableOpacity
                 style={styles.subscriptionTouchable}
-                onPress={() => router.push("/purchase")}
+                onPress={() => router.push("/(purchase)")}
                 activeOpacity={0.9}
               >
                 <Ionicons name="star" size={20} color="#ffffff" style={styles.subscriptionIcon} />
@@ -300,94 +344,94 @@ export default function LoggedInHome() {
 }
 
 const styles = StyleSheet.create({
-  gradient: { 
-    flex: 1, 
+  gradient: {
+    flex: 1,
   },
   safeArea: {
     flex: 1,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight : 0,
   },
-  titleRow: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    gap: 8, 
-    marginBottom: 12, 
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
     paddingHorizontal: 16,
     marginTop: 16,
   },
-  title: { 
-    fontFamily: "Heebo-Regular", 
-    fontSize: 28, 
-    fontWeight: "800", 
-    color: "#31333d", 
-    textAlign: "center", 
-    writingDirection: "rtl" 
+  title: {
+    fontFamily: "Heebo-Regular",
+    fontSize: 28,
+    fontWeight: "800",
+    color: "#31333d",
+    textAlign: "center",
+    writingDirection: "rtl",
   },
-  subtitle: { 
-    fontFamily: "Heebo-Regular", 
-    fontSize: 16, 
-    color: "#31333d", 
-    marginBottom: 24, 
-    textAlign: "center", 
-    lineHeight: 24, 
-    paddingHorizontal: 20, 
-    writingDirection: "rtl" 
+  subtitle: {
+    fontFamily: "Heebo-Regular",
+    fontSize: 16,
+    color: "#31333d",
+    marginBottom: 24,
+    textAlign: "center",
+    lineHeight: 24,
+    paddingHorizontal: 20,
+    writingDirection: "rtl",
   },
-  macroRow: { 
-    flexDirection: "row", 
-    justifyContent: "space-between", 
-    marginVertical: 20, 
-    gap: 10 
+  macroRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginVertical: 20,
+    gap: 10,
   },
-  summaryButton: { 
-    width: "100%", 
-    alignSelf: "center", 
-    marginBottom: 20 
+  summaryButton: {
+    width: "100%",
+    alignSelf: "center",
+    marginBottom: 20,
   },
   summaryCard: {
-    backgroundColor: "#fdffff", 
-    borderRadius: 16, 
+    backgroundColor: "#fdffff",
+    borderRadius: 16,
     padding: 16,
-    elevation: 4, 
-    shadowColor: "#000", 
+    elevation: 4,
+    shadowColor: "#000",
     shadowOpacity: 0.12,
-    shadowOffset: { width: 0, height: 3 }, 
+    shadowOffset: { width: 0, height: 3 },
     shadowRadius: 6,
-    borderWidth: 0.5, 
+    borderWidth: 0.5,
     borderColor: "rgba(0,0,0,0.05)",
   },
-  summaryTextRow: { 
-    flexDirection: "row-reverse", 
-    justifyContent: "space-between", 
-    alignItems: "center" 
+  summaryTextRow: {
+    flexDirection: "row-reverse",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
-  summaryTitle: { 
-    fontFamily: "Heebo-Regular", 
-    fontSize: 18, 
-    fontWeight: "700", 
-    color: "#31333d", 
-    textAlign: "right", 
-    writingDirection: "rtl" 
+  summaryTitle: {
+    fontFamily: "Heebo-Regular",
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#31333d",
+    textAlign: "right",
+    writingDirection: "rtl",
   },
-  summarySubtitle: { 
-    fontFamily: "Heebo-Regular", 
-    fontSize: 14, 
-    color: "#31333d", 
-    marginTop: 4, 
-    textAlign: "right" 
+  summarySubtitle: {
+    fontFamily: "Heebo-Regular",
+    fontSize: 14,
+    color: "#31333d",
+    marginTop: 4,
+    textAlign: "right",
   },
   // New logout button styles
   logoutButton: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 40 : StatusBar.currentHeight ? StatusBar.currentHeight + 10 : 10,
+    position: "absolute",
+    top: Platform.OS === "ios" ? 40 : StatusBar.currentHeight ? StatusBar.currentHeight + 10 : 10,
     right: 16,
     zIndex: 100,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
     width: 40,
     height: 40,
     borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -396,13 +440,13 @@ const styles = StyleSheet.create({
   },
   // New subscription button styles
   subscriptionContainer: {
-    width: '90%',
-    alignSelf: 'center',
+    width: "90%",
+    alignSelf: "center",
     marginVertical: 20,
   },
   subscriptionButton: {
     borderRadius: 12,
-    overflow: 'hidden',
+    overflow: "hidden",
     shadowColor: "#5e72e4",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
@@ -410,9 +454,9 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   subscriptionTouchable: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 16,
     paddingHorizontal: 20,
   },
@@ -420,9 +464,9 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   subscriptionText: {
-    color: '#ffffff',
+    color: "#ffffff",
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: "700",
     fontFamily: "Heebo-Regular",
   },
 })

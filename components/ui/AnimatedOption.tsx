@@ -110,11 +110,11 @@ const AnimatedOption: React.FC<AnimatedOptionProps> = ({
           </Text>
         </View>
         
-        <Animated.View style={[styles.checkmark, checkmarkStyle]}>
+        {/* <Animated.View style={[styles.checkmark, checkmarkStyle]}>
           <View style={[styles.checkmarkCircle, { backgroundColor: accentColor }]}>
             <Ionicons name="checkmark" size={14} color="#fff" />
           </View>
-        </Animated.View>
+        </Animated.View> */}
       </Animated.View>
     </TouchableOpacity>
   );
@@ -122,11 +122,11 @@ const AnimatedOption: React.FC<AnimatedOptionProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 16,
-    paddingHorizontal: 20,
+    paddingHorizontal: 10,
     borderRadius: 16,
     borderWidth: 2,
     marginBottom: 12,
@@ -137,7 +137,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   contentContainer: {
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     alignItems: 'center',
   },
   label: {

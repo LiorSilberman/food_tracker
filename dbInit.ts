@@ -24,9 +24,7 @@ export const initDatabase = async () => {
   `)
 
   // 2) Check for createdAt
-  const cols: { name: string }[] = await db.getAllAsync(
-    `PRAGMA table_info(onboarding);`
-  )
+  const cols: { name: string }[] = await db.getAllAsync(`PRAGMA table_info(onboarding);`)
   const hasCreatedAt = cols.some((c) => c.name === "createdAt")
 
   // 3) If missing, ALTER + backfill
@@ -66,6 +64,29 @@ export const initDatabase = async () => {
       timestamp  TEXT NOT NULL
     );
   `)
+
+  // 4) Custom nutrition table for manual overrides
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS custom_nutrition (
+      user_id    TEXT PRIMARY KEY,
+      calories   INTEGER,
+      protein    INTEGER,
+      fat        INTEGER,
+      carbs      INTEGER
+    );
+  `)
+
+  // 5) Display preferences table for home screen customization
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS display_preferences (
+      user_id             TEXT PRIMARY KEY,
+      show_calories_circle INTEGER NOT NULL DEFAULT 1,
+      show_protein_bar    INTEGER NOT NULL DEFAULT 1,
+      show_fat_bar        INTEGER NOT NULL DEFAULT 1,
+      show_carbs_bar      INTEGER NOT NULL DEFAULT 1
+    );
+  `)
+  console.log("✅ display_preferences table initialized")
 }
 
 export const logAllOnboardingData = async () => {
@@ -88,12 +109,32 @@ export const logAllMealsData = async () => {
   }
 }
 
-import * as FileSystem from 'expo-file-system'
+export const logAllCustomNutritionData = async () => {
+  try {
+    const results = await db.getAllAsync(`SELECT * FROM custom_nutrition;`)
+    console.log("📋 Custom Nutrition table contents:")
+    console.table(results)
+  } catch (error) {
+    console.error("❌ Failed to read custom nutrition data:", error)
+  }
+}
+
+export const logAllDisplayPreferencesData = async () => {
+  try {
+    const results = await db.getAllAsync(`SELECT * FROM display_preferences;`)
+    console.log("📋 Display Preferences table contents:")
+    console.table(results)
+  } catch (error) {
+    console.error("❌ Failed to read display preferences data:", error)
+  }
+}
+
+import * as FileSystem from "expo-file-system"
 
 export async function deleteAllDatabases() {
   const sqliteDir = `${FileSystem.documentDirectory}SQLite/`
-  const dbFiles = ['foodTracker_v2.db', 'foodTracker.db']
-  const suffixes = ['', '-shm', '-wal']
+  const dbFiles = ["foodTracker_v2.db", "foodTracker.db"]
+  const suffixes = ["", "-shm", "-wal"]
 
   for (const dbName of dbFiles) {
     for (const suffix of suffixes) {
@@ -102,7 +143,7 @@ export async function deleteAllDatabases() {
         await FileSystem.deleteAsync(fileUri, { idempotent: true })
         console.log(`✅ Deleted ${fileUri}`)
       } catch (e) {
-        console.warn(`⚠️ Couldn’t delete ${fileUri}:`, e)
+        console.warn(`⚠️ Couldn't delete ${fileUri}:`, e)
       }
     }
   }

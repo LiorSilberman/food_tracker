@@ -25,6 +25,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="addImage"
+        options={{
+          title: '',
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen
         name="dailySummary"
         options={{
           title: 'סיכום',
@@ -32,12 +39,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="addImage"
+        name="settings"
         options={{
-          title: '',
+          title: 'הגדרות',
           headerShown: false,
         }}
-      />
+        />
+      
     </Tabs>
   );
 }

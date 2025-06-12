@@ -1,3 +1,4 @@
+"use client"
 import React, { useState } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, Alert, ImageBackground } from 'react-native';
 import { createUserWithEmailAndPassword, deleteUser, UserCredential } from 'firebase/auth';

@@ -2,10 +2,11 @@ import 'dotenv/config';
 import { ExpoConfig, ConfigContext } from '@expo/config';
 
 export default ({ config }: ConfigContext): ExpoConfig => {
-    const isProd = process.env.NODE_ENV === 'production';
- 
-    return {
+  const isProd = process.env.NODE_ENV === 'production';
+
+  return {
     ...config,
+    sdkVersion: '53.0.0',
     name: 'food-tracker-app',
     slug: 'food-tracker-app',
     version: '1.0.0',
@@ -13,24 +14,28 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     icon: './assets/images/icon.png',
     scheme: 'myapp',
     userInterfaceStyle: 'automatic',
-    newArchEnabled: true,
+
     ios: {
       supportsTablet: true,
+      newArchEnabled: false,
     },
     android: {
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon.png',
         backgroundColor: '#ffffff',
       },
+      newArchEnabled: false,
     },
+
     web: {
       bundler: 'metro',
       output: 'static',
       favicon: './assets/images/favicon.png',
     },
+
     plugins: [
       'expo-router',
-      "expo-sqlite",
+      'expo-sqlite',
       'expo-updates',
       [
         'expo-splash-screen',
@@ -45,14 +50,15 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       'react-native-iap',
       'expo-barcode-scanner',
     ],
+
     experiments: {
       typedRoutes: true,
     },
+
     extra: {
       API_URL: isProd
         ? process.env.API_URL_PROD
         : process.env.API_URL_DEV,
-        
       FIREBASE_API_KEY: process.env.FIREBASE_API_KEY,
       FIREBASE_AUTH_DOMAIN: process.env.FIREBASE_AUTH_DOMAIN,
       FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID,
@@ -67,6 +73,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         origin: false,
       },
     },
+
     runtimeVersion: {
       policy: 'appVersion',
     },

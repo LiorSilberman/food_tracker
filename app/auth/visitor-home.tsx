@@ -139,7 +139,7 @@ export default function VisitorHome() {
             <BlurView intensity={80} tint="light" style={styles.blurContainer}>
               <TouchableOpacity
                 style={styles.startButton}
-                onPress={() => router.push("/onbording/genderNAge")}
+                onPress={() => router.push("/(onbording)/genderNAge")}
                 activeOpacity={0.8}
               >
                 <LinearGradient
@@ -165,7 +165,7 @@ export default function VisitorHome() {
             <View style={styles.androidButtonsContainer}>
               <TouchableOpacity
                 style={styles.startButton}
-                onPress={() => router.push("/onbording/genderNAge")}
+                onPress={() => router.push("/(onbording)/genderNAge")}
                 activeOpacity={0.8}
               >
                 <LinearGradient

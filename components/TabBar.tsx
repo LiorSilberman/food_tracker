@@ -3,7 +3,6 @@
 import { useEffect } from "react"
 import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Platform } from "react-native"
 import { AntDesign, FontAwesome6, Ionicons } from "@expo/vector-icons"
-import { useRouter } from "expo-router"
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs"
 import { useImageUploadStore } from "../stores/imageUploadStore"
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from "react-native-reanimated"
@@ -19,18 +18,18 @@ const icons = {
   addImage: (props: any) => <Ionicons name="add" size={28} {...props} />,
   progress: (props: any) => <Ionicons name="trending-up" size={24} {...props} />,
   dailySummary: (props: any) => <FontAwesome6 name="bars-progress" size={22} {...props} />,
+  settings: (props: any) => <Ionicons name="settings-outline" size={24} {...props} />,
 }
 
 type TabRouteName = keyof typeof icons
 
 export default function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
-  const setShowUploadModal = (show: boolean) =>
-    useImageUploadStore.setState({ showUploadModal: show })
   const showUploadModal = useImageUploadStore((s) => s.showUploadModal)
+  const setShowUploadModal = useImageUploadStore((s) => s.setShowUploadModal)
 
   // Animation values
-  const tabPositions = [useSharedValue(0), useSharedValue(0), useSharedValue(0), useSharedValue(0)]
-  const tabScales = [useSharedValue(1), useSharedValue(1), useSharedValue(1), useSharedValue(1)]
+  const tabPositions = [useSharedValue(0), useSharedValue(0), useSharedValue(0), useSharedValue(0), useSharedValue(0)]
+  const tabScales = [useSharedValue(1), useSharedValue(1), useSharedValue(1), useSharedValue(1), useSharedValue(1)]
   const addButtonScale = useSharedValue(1)
   const addButtonRotation = useSharedValue(0)
 
@@ -63,10 +62,7 @@ export default function TabBar({ state, descriptors, navigation }: BottomTabBarP
   }, [showUploadModal])
 
   const addButtonAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { scale: addButtonScale.value },
-      { rotate: `${addButtonRotation.value}deg` },
-    ],
+    transform: [{ scale: addButtonScale.value }, { rotate: `${addButtonRotation.value}deg` }],
   }))
 
   return (
@@ -133,10 +129,12 @@ const TabBarContent = ({
         options.tabBarLabel !== undefined
           ? options.tabBarLabel
           : options.title !== undefined
-          ? options.title
-          : route.name === "progress"
-          ? "תהליך"
-          : route.name
+            ? options.title
+            : route.name === "progress"
+              ? "תהליך"
+              : route.name === "settings"
+                ? "הגדרות"
+                : route.name
 
       const isFocused = state.index === index
 
@@ -179,7 +177,12 @@ const TabBarContent = ({
           ) : (
             <Animated.View style={[styles.tabContent, tabAnimatedStyle]}>
               {icons[routeName]({ color: isFocused ? primaryColor : greyColor })}
-              <Text style={[styles.tabLabel, { color: isFocused ? primaryColor : greyColor, fontWeight: isFocused ? "600" : "400" }]}>
+              <Text
+                style={[
+                  styles.tabLabel,
+                  { color: isFocused ? primaryColor : greyColor, fontWeight: isFocused ? "600" : "400" },
+                ]}
+              >
                 {label}
               </Text>
               {isFocused && <View style={styles.activeIndicator} />}

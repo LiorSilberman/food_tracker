@@ -1,6 +1,7 @@
 {
   "extends": "expo/tsconfig.base",
-  "compilerOptions": {
+  "compilerOptions": {  
+    "allowSyntheticDefaultImports": true,
     "module": "ESNext",
     "moduleResolution": "node",
     "strict": true,
